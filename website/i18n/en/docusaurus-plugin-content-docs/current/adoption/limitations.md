@@ -13,17 +13,15 @@ API, authentication or dashboard.
 
 ## It does not merge into existing configuration
 
-The supported path is a clean install: `omp:migrate` backs up and replaces
-only managed files and never merges. If you have an existing
-`~/.omp/agent`, migration preserves your unmanaged files but there is no
-merge script that reconciles your current configuration with the harness.
+The supported path is a clean copy of `omp/agent/` after a backup. There is no
+merge or migration script: if `~/.omp/agent` already exists, rename it to
+`omp-agent-backup` before installing.
 
 ## It is not a package manager
 
 There is no installation CLI, automatic update or semantic versioning.
-Updates should use a reviewed revision: inspect the diff, `package.json`,
-manifest, and lockfile, then run `npm ci --ignore-scripts` followed by
-`npm run omp:check`.
+Updates use a reviewed Git revision, manifest validation, and a new clean copy
+of the core package.
 
 ## It does not document all skills
 

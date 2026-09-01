@@ -7,11 +7,21 @@ sidebar_position: 4
 Organization of the harness installation under `~/.omp/agent` and of the
 artifacts it manages in a project.
 
-## Public documentation repository (`omp-harness-guide`)
+## Public repository (`omp-harness-guide`)
 
 ```text
 omp-harness-guide/
 |-- README.md                     Bilingual overview and install link
+|-- omp/
+|   `-- agent/                    Distributable OMP core
+|       |-- agents/               Source-agent profiles
+|       |-- commands/             Global commands
+|       |-- extensions/           Native extension
+|       |-- scripts/              Node utilities
+|       |-- skills/               General and defensive skills
+|       |-- docs/                 Global context
+|       |-- config.yml            Public configuration
+|       `-- omp-port-manifest.json Package inventory and hashes
 |-- website/                      Docusaurus documentation site
 |   |-- docs/                     Default pt-BR source
 |   |-- i18n/en/...               English translation
@@ -26,25 +36,27 @@ omp-harness-guide/
 `-- .github/workflows/            CI validation and Pages deployment
 ```
 
-The repository contains only public documentation and validation. It does not
-distribute the harness itself or any runtime evidence.
+The repository contains documentation, the curated OMP core, and public
+validation. The package does not include runtime state or evidence.
 
 ## Global install (`~/.omp/agent`)
 
 ```text
 ~/.omp/agent/
-|-- config.yml           Global configuration
-|-- extensions/          Runtime extensions
-|   |-- harness-omp-trace.ts     OMP native event-to-trace adapter (pi.on)
-|   `-- harness-security-guard.ts  Dangerous-command guard
-|-- scripts/             Node utilities (harness-*.mjs)
+|-- config.yml           Public agent configuration
+|-- extensions/          Native runtime extension
+|   `-- harness-omp-trace.ts     OMP native event-to-trace adapter (pi.on)
+|-- scripts/             Node utilities (26)
 |-- commands/            Global commands (/prevc, /planner, /quality, ...)
-|-- skills/              Skills loaded lazily by Oh My Pi
-|-- agents/              Specialized subagent definitions (24)
-|-- docs/                Global harness context (generated, not hand-edited)
-|-- tests/               Harness tests
-`-- backups/             Byte-exact backups created by omp:migrate
+|-- skills/              General and defensive skills (107)
+|-- agents/              Source-agent definitions (23)
+|-- docs/                Global harness context (`docs/context.md`)
+`-- omp-port-manifest.json Package inventory and hashes
 ```
+
+This tree is copied from `omp/agent/` and checked against
+`omp-port-manifest.json`. Runtime directories such as sessions, caches, and
+local databases may exist beside it, but are not part of the public package.
 
 ## Project artifacts
 
@@ -97,11 +109,9 @@ projects.
 
 ## Note on the public distribution
 
-This public distribution **does not include** offensive security skills
-(recon, redteam, and standalone attack skill families), nor local runtime
-evidence (gate reports, review notes, traces, findings, or lifecycle
-state). The exclusions are
-declared in the harness manifest and machine-checked: the validator refuses
-to produce a package that violates them, and the CI workflow blocks a public
-mirror that contains them. Legitimate curated security skills
-(`skills/wstg-*` and the defensive `*-security-coder`) remain.
+This public distribution excludes offensive, recon, exploitation, pentest,
+attack-chain, and WSTG skill families, as well as local runtime evidence. The
+exclusions are declared in the harness manifest and machine-checked: the
+validator refuses a public tree that violates them, and the CI workflow blocks
+publication when they appear. The curated defensive skills that ship in the
+core remain.

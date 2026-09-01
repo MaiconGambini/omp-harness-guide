@@ -4,103 +4,102 @@ sidebar_position: 2
 
 # Instalação
 
-O Harness Oh My Pi é distribuído como um conjunto de arquivos gerenciados instalados em `~/.omp/agent`, o diretório de agente do Oh My Pi. A instalação é limpa: não existe merge automático sobre uma configuração existente. O que existe é backup explícito, migração assistida de layout legado e verificação de paridade.
+O Harness Oh My Pi é distribuído no diretório `omp/agent/` deste repositório.
+Essa árvore contém os arquivos reais que o Oh My Pi carrega em
+`~/.omp/agent`: agents, comandos, scripts, extensão, configuração e skills
+gerais. A instalação é limpa: não existe merge automático sobre uma
+configuração existente.
 
 ## Passo 1: Fazer backup do diretório atual (se existir)
 
-Se você já tem um `~/.omp/agent` com arquivos seus (comandos, extensões, configurações), renomeie a pasta antes de instalar:
+Se você já tem um `~/.omp/agent` com arquivos seus, renomeie a pasta antes de
+instalar:
 
 ```powershell
 Rename-Item -LiteralPath "$env:USERPROFILE\.omp\agent" -NewName "omp-agent-backup"
 ```
 
-A instalação não faz merge automático em uma instalação existente. Use o backup como referência e copie o que quiser depois.
+A distribuição pública não migra nem mistura configurações automaticamente.
+Use o backup como referência e copie o que quiser depois.
 
-## Passo 2: Obter a distribuição e instalar dependências
+## Passo 2: Obter e revisar a distribuição
 
-A árvore Oh My Pi do harness é gerada por `scripts/export-to-omp.mjs` no checkout de origem e verificada por `omp-port-manifest.json`. Obtenha o checkout de origem da distribuição, revise o `package.json` e o lockfile antes de executar scripts Node e instale as dependências sem lifecycle scripts de terceiros:
-
-```powershell
-Set-Location <caminho-da-distribuicao>
-npm ci --ignore-scripts
-```
-
-> `npm ci` exige um lockfile compatível e instala exatamente as versões registradas. Binários de plataforma exigem instalação local — não copie `node_modules` entre máquinas. Execute scripts do projeto somente depois de revisar a revisão e o manifesto.
-
-## Passo 3: Prévia (dry run)
-
-Antes de tocar qualquer arquivo, veja o que será instalado:
+Clone o repositório e revise a revisão do Git, o manifest do pacote e os
+arquivos antes de instalar:
 
 ```powershell
-npm run omp:dry-run
+git clone https://github.com/MaiconGambini/omp-harness-guide.git
+Set-Location omp-harness-guide
+Get-ChildItem .\omp\agent
+Get-Content .\omp\agent\omp-port-manifest.json
 ```
 
-O modo de prévia executa o exportador sem escrever na instalação. *(Saída ilustrativa:)*
+`omp/agent/` é o pacote runtime. `website/` é somente o site da documentação;
+suas dependências não são necessárias para instalar o OMP.
 
-```text
-preview: dry run ok — nenhuma escrita realizada
-```
+## Passo 3: Validar o pacote público
 
-## Passo 4: Instalar ou migrar
-
-Se `~/.omp/agent` não existe (instalação limpa):
+O validador verifica manifest, caminhos proibidos, conteúdo com formato de
+segredo, famílias ofensivas e paridade da documentação:
 
 ```powershell
-npm run omp:install
+node scripts/validate-public-subset.mjs --check-manifest
+node scripts/validate-public-subset.mjs
 ```
 
-Se existe um layout legado do harness (configuração no formato anterior):
+Não prossiga se qualquer comando retornar `FAIL`.
+
+## Passo 4: Instalar em uma pasta limpa
+
+Depois do backup, copie a árvore real do pacote para `~/.omp/agent`:
 
 ```powershell
-npm run omp:migrate
+$target = Join-Path $env:USERPROFILE ".omp\agent"
+New-Item -ItemType Directory -Force $target | Out-Null
+Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
 ```
 
-A migração:
+O pacote não inclui estado de sessão, bancos locais, caches, findings,
+traces, receipts ou outras evidências de runtime.
 
-- substitui apenas os arquivos gerenciados que pertencem ao manifesto;
-- preserva **arquivos não gerenciados** (relatório `unmanaged: { count, unchanged, changed }`);
-- faz backup byte-exact de cada colisão substituída em `~/.omp/agent/backups/`, com um manifesto gravado (caminho original + hash) — nenhum arquivo seu é apagado sem cópia.
+## Passo 5: Reabrir e conferir
 
-Uma segunda execução deve ser idempotente: `migrated: 0` indica que não há novas mudanças gerenciadas. Se o comando terminar com `exit 2`, o harness recusou a transição por uma pré-condição; leia a razão exibida em vez de tratar o caso como uma falha genérica do npm.
-
-## Passo 5: Verificar a instalação
+Feche e reabra o Oh My Pi. Agents, comandos, skills e extensões são carregados
+somente na inicialização. Confira os arquivos gerenciados:
 
 ```powershell
-npm run omp:check
+Get-ChildItem "$env:USERPROFILE\.omp\agent" -Recurse -File |
+  Measure-Object
 ```
 
-A verificação compara a árvore instalada com o manifesto e reporta drift. *(Saída ilustrativa:)*
+O arquivo `~/.omp/agent/omp-port-manifest.json` registra hashes do pacote
+publicado para inspeção e auditoria.
 
-```text
-{ "ok": true, "drift": [] }
-```
-
-`ok: false` ou uma lista de drift nomeia os arquivos divergentes para inspeção. Depois da verificação, **feche e reabra o Oh My Pi**: comandos e extensões são carregados apenas na inicialização.
-
-## Estrutura resultante
+## Estrutura instalada
 
 Após a instalação, `~/.omp/agent` contém:
 
-- `commands/` — comandos do harness (`/prevc`, `/quality`, `/harness-*`).
-- `agents/` — perfis de source agents (scheduler, implementer, reviewers, judge, refiner e outros).
-- `scripts/` — utilitários Node portáveis (`harness-prevc-state.mjs`, `harness-quality-gate.mjs`, `harness-risk-router.mjs`, `harness-trace.mjs`, entre outros).
-- `extensions/` — a extensão de rastreio `harness-omp-trace.ts` e extensões de status/segurança.
-- `skills/` — skills carregadas pelo Oh My Pi.
-- `docs/` — o contexto global compartilhado (`docs/context.md`), gerado pelo exportador, não editado à mão.
-- `config.yml` — configuração do agente, incluindo os papéis de modelo (`modelRoles`).
-- `backups/` — cópias de migração (criadas apenas quando há colisões).
+- `commands/` — 19 comandos do harness (`/prevc`, `/harness-*` e suporte).
+- `agents/` — 23 perfis de source agents, sem `security-analyst`.
+- `scripts/` — 26 utilitários Node portáveis.
+- `extensions/` — a extensão nativa `harness-omp-trace.ts`.
+- `skills/` — 107 skills gerais e defensivas, carregadas sob demanda.
+- `docs/` — o contexto global compartilhado (`docs/context.md`).
+- `config.yml` — configuração pública de agentes e papéis de modelo.
+- `omp-port-manifest.json` — inventário e hashes do pacote.
 
-Diretórios de runtime (sessões, caches, bancos locais) não fazem parte da distribuição gerenciada e não são tocados pela instalação.
+Não fazem parte do pacote: skills `recon-*`, `redteam-*`, `hiagosh-*`,
+`wstg-*`, exploração, pentest, chains de ataque e estado privado local.
 
 ## Solução de problemas
 
 | Problema | Ação |
 |---|---|
-| `npm ci` falha | Verifique o Node.js 20+ (`node --version`), a revisão do checkout e a compatibilidade entre `package.json` e lockfile. |
-| `exit 2` ao instalar ou migrar | Leia a pré-condição informada pelo harness; não repita às cegas nem trate como erro genérico do npm. |
-| `omp:check` reporta drift | Leia os caminhos listados; arquivos não gerenciados são esperados e preservados. |
-| Oh My Pi não carrega os comandos | Feche e reabra o Oh My Pi. A configuração é carregada apenas na inicialização. |
+| `validate-public-subset` falha | Leia o motivo e não instale uma árvore que falhou no validator. |
+| O destino `~/.omp/agent` já existe | Renomeie-o para `omp-agent-backup`; não faça merge manual antes do backup. |
+| Oh My Pi não carrega os comandos | Feche e reabra o Oh My Pi; a configuração é carregada apenas na inicialização. |
+| Um script do harness falha | Verifique Node.js 20+, a revisão do checkout e os caminhos exibidos pelo script. |
 
 ## Próximo passo
 
-Vá para [Primeira Sessão](./first-session) e use o harness pela primeira vez.
+Vá para [Primeira Sessão](./first-session) e use o núcleo público do harness pela primeira vez.

@@ -7,7 +7,8 @@
     "website/**",
     "scripts/harness-manifest.json",
     "scripts/validate-public-subset.mjs",
-    ".github/workflows/**"
+    ".github/workflows/**",
+    "omp/agent/**"
   ],
   "exclude": [
     "docs/harness/state/**",
@@ -26,6 +27,15 @@
     "*.secret",
     "*.local.json",
     "*.local.jsonc",
-    ".npmrc"
+    ".npmrc",
+    "omp/agent/agents/security-analyst.md",
+    "omp/agent/skills/recon-*",
+    "omp/agent/skills/redteam-*",
+    "omp/agent/skills/hiagosh-*",
+    "omp/agent/skills/wstg-*",
+    "omp/agent/skills/auth-saml-sso-attack",
+    "omp/agent/skills/chains-cross-attack-chains",
+    "omp/agent/skills/chains-wordpress-full-compromise",
+    "omp/agent/skills/infra-docker-privesc"
   ]
 }

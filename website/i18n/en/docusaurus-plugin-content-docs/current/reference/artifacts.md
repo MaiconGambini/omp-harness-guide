@@ -10,14 +10,14 @@ Files that the harness reads and writes during the lifecycle.
 
 | Path | Purpose |
 |---|---|
-| `~/.omp/agent/config.yml` | Global configuration |
-| `~/.omp/agent/extensions/` | Runtime extensions (trace adapter, security guard) |
+| `~/.omp/agent/config.yml` | Public global configuration |
+| `~/.omp/agent/extensions/` | Native runtime extensions |
 | `~/.omp/agent/scripts/` | Node utilities (`harness-*.mjs`) |
 | `~/.omp/agent/commands/` | Global commands (`/prevc`, `/planner`, ...) |
-| `~/.omp/agent/skills/` | Skills loaded lazily by Oh My Pi |
-| `~/.omp/agent/agents/` | Specialized subagent definitions |
+| `~/.omp/agent/skills/` | General and defensive skills loaded lazily |
+| `~/.omp/agent/agents/` | Source-agent definitions |
 | `~/.omp/agent/docs/` | Global harness context |
-| `~/.omp/agent/backups/` | Byte-exact backups created by `omp:migrate` |
+| `~/.omp/agent/omp-port-manifest.json` | Public package inventory and hashes |
 
 ## State (per project)
 

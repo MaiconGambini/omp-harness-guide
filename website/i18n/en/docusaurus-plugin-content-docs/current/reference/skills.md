@@ -31,7 +31,7 @@ from the actual directories under `skills/` and `agents/`).
 | `harness-readable-workspace` | Session that does not orient itself: fresh-session test and gap mapping |
 | `harness-context-layer` | Inconsistent decisions: audits ARCHITECTURE, PRODUCT, RELIABILITY |
 | `harness-refine` | The Refine phase after Judge: dispatches the read-only refiner and routes proposals by blast radius |
-| `harness-redteam-check` | Bounded adversarial check (R1): deterministic diff scan plus tier-branched security-analyst review before the gate/commit |
+| `harness-redteam-check` | Bounded defensive adversarial check (R1): deterministic diff scan with operator-approved security escalation |
 
 ## Harness — setup, portability, and stack
 
@@ -97,11 +97,10 @@ roles:
 | `implementer` / `fixer` | Scoped lane implementation | yes |
 | `test-runner` / `test-automation-engineer` | Tests and test automation | yes |
 | `code-reviewer` / `architecture-reviewer` | Quality gates over the diff | no |
-| `security-analyst` | Tier-branched security review | no |
 | `judge` | Read-only Judge: returns one receipt per run | no |
 | `refiner` | Read-only Refine proposals | no |
 | `rule-verifier` | Refutes prose-rule proposals | no |
-| `explorer` | Read-only recon in unfamiliar code | no |
+| `explorer` | Read-only discovery in unfamiliar code | no |
 | `requirements-interrogator` | Requirements discovery | no |
 | `system-design-advisor` / `architecture-advisor` / `design-patterns-advisor` | Design guidance | no |
 | `design-director` | Design direction | no |
@@ -131,20 +130,15 @@ These are the curated development skills that ship with the harness:
   `verification-before-completion`, `reviewing-code`, `code-review`,
   `requesting-code-review`, `receiving-code-review`.
 - **Security (defensive, curated):** `frontend-security-coder`,
-  `backend-security-coder`, `frontend-mobile-security-xss-scan`, and the
-  `wstg-*` family (WSTG test methodology: information gathering,
-  configuration management, identity management, authentication,
-  authorization, session management, input validation, error handling, weak
-  cryptography, business logic, client-side, API testing).
+  `backend-security-coder`, `frontend-mobile-security-xss-scan`.
 - **Meta and tooling:** `writing-skills`, `writing`,
   `prompt-engineering`, `dispatching-parallel-agents`, `using-git-worktrees`,
   `resolving-merge-conflicts`, `playwright-cli`, `obsidian`.
 
 ## Note on the public distribution
 
-The public distribution **does not include** offensive security skill
-families (recon, redteam, and standalone attack skills), nor local runtime
-evidence. The exclusions are declared in the harness manifest and
-machine-checked: the validator refuses a public tree that violates them.
-Legitimate curated security skills (the `wstg-*` family and the defensive
-`*-security-coder` skills) remain.
+The public distribution excludes offensive, recon, exploitation, pentest,
+attack-chain, and WSTG skill families, as well as local runtime evidence. The
+exclusions are declared in the harness manifest and machine-checked: the
+validator refuses a public tree that violates them. The curated defensive
+security skills listed above remain.

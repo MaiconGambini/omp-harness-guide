@@ -12,19 +12,27 @@ O harness é um conjunto de arquivos de configuração, scripts e uma extensão.
 
 ## Não faz merge em configuração existente
 
-A instalação é limpa: clonar/instalar em uma pasta vazia ou após backup. Não há script de merge que preserve sua configuração atual enquanto adiciona o harness. A migração de layout legado (`omp:migrate`) substitui apenas arquivos gerenciados, com backup byte-exact de cada colisão e preservação de arquivos não gerenciados — mas não é um merge arbitrário de configurações.
+O caminho suportado é uma cópia limpa de `omp/agent/` após backup. Não há
+script de merge ou migração: se `~/.omp/agent` já existe, renomeie-o para
+`omp-agent-backup` antes de instalar.
 
 ## Não é um gerenciador de pacotes
 
-Não há CLI de instalação, atualização automática ou versionamento semântico da distribuição. Atualizações são feitas regenerando a árvore com o exportador e reinstalando.
+Não há CLI de instalação, atualização automática ou versionamento semântico da
+distribuição. Atualizações usam uma revisão Git revisada, validação do manifest
+e nova cópia limpa do núcleo.
 
 ## Não documenta todas as skills
 
-O site documenta o workflow do harness. Skills especializadas (frontend, backend, testes) que coexistem no repositório não têm capítulos próprios na documentação.
+O site documenta o workflow do harness. Skills especializadas (frontend,
+backend, Python, TypeScript e testes) que acompanham o núcleo não têm capítulos
+próprios na documentação.
 
 ## Não é multiplataforma completo
 
-O harness foi projetado e testado no Windows com PowerShell 5.1+. Os fluxos de instalação usam comandos PowerShell; o runtime Node é portável, mas scripts shell equivalentes não são fornecidos para outros sistemas.
+O harness foi projetado e testado no Windows com PowerShell 5.1+. O runtime
+Node é portável, mas os fluxos documentados de instalação usam comandos
+PowerShell; scripts shell equivalentes não são fornecidos para outros sistemas.
 
 ## Lacunas explícitas
 

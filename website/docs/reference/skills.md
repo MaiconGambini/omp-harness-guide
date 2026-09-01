@@ -21,7 +21,6 @@ Os perfis ficam em `~/.omp/agent/agents/`. Todo subagente despachado via `task` 
 | `test-automation-engineer` | Automação de testes | sim |
 | `code-reviewer` | Quality gate — revisão de código | não |
 | `architecture-reviewer` | Quality gate — revisão de arquitetura | não |
-| `security-analyst` | Revisão de segurança (tiers altos) | não |
 | `judge` | Veredito pós-gate (recibo JSON) | não |
 | `refiner` | Proposta de melhoria pós-Judge (read-only) | não |
 | `rule-verifier` | Refutação de propostas de regra | não |
@@ -43,7 +42,10 @@ Regras de dispatch:
 
 ## Skills
 
-Skills são arquivos `SKILL.md` que o Oh My Pi carrega de forma preguiçosa (lazy-loading), apenas quando a task combina com a descrição. A lista deriva dos diretórios reais em `~/.omp/agent/skills/` e não tem contagem fixa. As principais do harness:
+Skills são arquivos `SKILL.md` que o Oh My Pi carrega de forma preguiçosa
+(lazy-loading), apenas quando a task combina com a descrição. A distribuição
+pública contém 107 skills gerais e defensivas curadas; famílias de recon,
+pentest, exploração, WSTG e chains de ataque ficam fora do pacote.
 
 ### Harness — ciclo de vida e workflow
 
@@ -121,6 +123,6 @@ Skills são arquivos `SKILL.md` que o Oh My Pi carrega de forma preguiçosa (laz
 
 ### Engenharia e ferramentas
 
-Skills de frontend, backend, Python, TypeScript, testes, debug e code review acompanham o repositório (ex: `react`, `nextjs-app-router-patterns`, `python-pro`, `fastapi`, `typescript`, `tdd`, `systematic-debugging`, `verification-before-completion`, `reviewing-code`, `dispatching-parallel-agents`, `using-git-worktrees`, `resolving-merge-conflicts`, `playwright-cli`). Skills de segurança defensivas curadas (`wstg-*`, `*-security-coder`) permanecem na distribuição; famílias ofensivas não fazem parte da distribuição pública.
+Skills de frontend, backend, Python, TypeScript, testes, debug e code review acompanham o repositório (ex: `react`, `nextjs-app-router-patterns`, `python-pro`, `fastapi`, `typescript`, `tdd`, `systematic-debugging`, `verification-before-completion`, `reviewing-code`, `dispatching-parallel-agents`, `using-git-worktrees`, `resolving-merge-conflicts`, `playwright-cli`). Skills de segurança defensivas curadas (`frontend-security-coder`, `backend-security-coder`, `frontend-mobile-security-xss-scan`) também fazem parte do núcleo; famílias ofensivas, WSTG e recon não fazem parte da distribuição pública.
 
 O carregamento é lazy: a descrição da skill decide se ela entra no contexto. Isso mantém o orçamento de contexto sob controle.

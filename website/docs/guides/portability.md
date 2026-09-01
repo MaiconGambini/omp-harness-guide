@@ -6,45 +6,46 @@ sidebar_position: 5
 
 > **Estado PREVC:** `prepare → handoff` — o harness é regenerável; a árvore instalada nunca é o sistema de registro.
 
-O harness pode ser movido entre máquinas ou compartilhado com outros desenvolvedores.
+O núcleo OMP público fica em `omp/agent/` e pode ser levado para outra
+máquina por Git ou por um arquivo de distribuição. O diretório instalado é
+`~/.omp/agent`.
 
 ## A árvore instalada é regenerável
 
-A árvore gerenciada em `~/.omp/agent` é gerada pelo exportador (`scripts/export-to-omp.mjs`) a partir do checkout de origem e verificada por `omp-port-manifest.json`. Na máquina nova, revise a revisão do checkout, o `package.json` e o lockfile antes de executar os scripts:
+Na máquina nova, clone uma revisão conhecida, revise o manifest do pacote e
+valide a árvore antes de copiá-la:
 
 ```powershell
-npm ci --ignore-scripts
-npm run omp:dry-run
-npm run omp:install
-npm run omp:check
+git clone https://github.com/MaiconGambini/omp-harness-guide.git
+Set-Location omp-harness-guide
+Get-Content .\omp\agent\omp-port-manifest.json
+node scripts/validate-public-subset.mjs --check-manifest
 ```
 
-`npm ci --ignore-scripts` instala exatamente as versões do lockfile sem executar lifecycle scripts de dependências; não execute scripts de um checkout não revisado.
-
-## Migrar uma instalação legada
-
-Se a máquina tem um layout legado do harness:
+A instalação é uma cópia limpa:
 
 ```powershell
-npm run omp:migrate
+$target = Join-Path $env:USERPROFILE ".omp\agent"
+New-Item -ItemType Directory -Force $target | Out-Null
+Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
 ```
 
-- Substitui apenas arquivos gerenciados (colisões com o manifesto).
-- Backup byte-exact de cada colisão em `~/.omp/agent/backups/` com manifesto gravado.
-- Arquivos não gerenciados são preservados (`unmanaged: { count, unchanged, changed }`).
+Não existe exportador ou comando de migração no pacote público. Se o destino
+já existe, renomeie-o para `omp-agent-backup` antes da cópia. Isso evita merge
+silencioso e mantém sua configuração anterior recuperável.
 
-## Exportar para outros destinos
+## Levar para outro PC
 
-O checkout de origem do harness inclui scripts de export dedicados que geram a mesma árvore para outros agentes ou diretórios de instalação. O conteúdo gerenciado — comandos, agents, scripts, extensões, skills, docs, config — é o mesmo em qualquer destino.
+- Use a mesma revisão Git em todas as máquinas.
+- Não copie `node_modules`: as dependências do `website/` são locais e não
+  fazem parte do runtime OMP.
+- Revise `config.yml` e `omp-port-manifest.json` antes de iniciar o Oh My Pi.
+- Feche e reabra o Oh My Pi após substituir arquivos; o carregamento ocorre na
+  inicialização.
 
-## Instalar no outro PC
+## O que não é transportado
 
-- Binários de plataforma exigem instalação local com `npm ci --ignore-scripts`; copiar `node_modules` entre sistemas diferentes não funciona.
-
-## Cuidados
-
-- Não copie `node_modules` entre máquinas.
-- Revise a configuração após a instalação. Caminhos usam `os.homedir()`, então nenhuma edição manual de caminho é necessária em um perfil padrão.
-- Se você tem uma configuração existente, faça backup antes de sobrescrever.
-- Este repositório público (`omp-harness-guide`) contém **apenas documentação** — o harness em si vem do checkout de origem da distribuição.
-- Confira a paridade após qualquer migração com `npm run omp:check`; a inspeção de drift nomeia cada arquivo divergente.
+O pacote não contém estado de sessão, bancos locais, caches, findings, traces,
+receipts, backups locais ou outras evidências de runtime. Também não contém
+skills `recon-*`, `redteam-*`, `hiagosh-*`, `wstg-*`, exploração, pentest ou
+chains de ataque.

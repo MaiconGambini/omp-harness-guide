@@ -11,6 +11,16 @@ Três camadas compõem o harness Oh My Pi: o **repositório público de document
 ```text
 omp-harness-guide/
 |-- README.md                     Apresentação bilíngue + instalação
+|-- omp/
+|   `-- agent/                    Núcleo OMP distribuível
+|       |-- agents/               Perfis de source agents
+|       |-- commands/             Comandos globais
+|       |-- extensions/           Extensão nativa
+|       |-- scripts/              Utilitários Node
+|       |-- skills/               Skills gerais e defensivas
+|       |-- docs/                 Contexto global
+|       |-- config.yml            Configuração pública
+|       `-- omp-port-manifest.json Inventário e hashes do pacote
 |-- website/                      Site de documentação (Docusaurus)
 |   |-- docs/                     Fonte da documentação (pt-BR, padrão)
 |   |-- i18n/en/...               Tradução (en)
@@ -25,26 +35,26 @@ omp-harness-guide/
 `-- .github/workflows/            CI: validação e deploy Pages
 ```
 
-O repositório contém **apenas documentação e validação pública**. Ele não distribui o harness em si nem qualquer evidência de runtime.
+O repositório contém documentação, o núcleo OMP curado e validação pública. O
+pacote não inclui estado ou evidência de runtime.
 
 ## Instalação gerenciada (`~/.omp/agent`)
 
 ```text
 ~/.omp/agent/
-|-- config.yml              Configuração do agente (modelRoles etc.)
+|-- config.yml              Configuração pública do agente
 |-- commands/               Comandos do harness (/prevc, /quality, /harness-*)
-|-- agents/                 Perfis de source agents (24)
-|-- scripts/                Utilitários Node portáveis (harness-prevc-state.mjs,
-|                           harness-quality-gate.mjs, harness-risk-router.mjs,
-|                           harness-trace.mjs, harness-findings.mjs, ...)
-|-- extensions/             Extensões (harness-omp-trace.ts, security guard, status)
-|-- skills/                 Skills carregadas pelo Oh My Pi
-|-- docs/                   Contexto global gerado (docs/context.md)
-|-- tests/                  Testes do harness
-`-- backups/                Backups de migração (quando há colisões)
+|-- agents/                 Perfis de source agents (23)
+|-- scripts/                Utilitários Node portáveis (26)
+|-- extensions/             Extensão nativa (harness-omp-trace.ts)
+|-- skills/                 Skills gerais e defensivas (107)
+|-- docs/                   Contexto global (docs/context.md)
+`-- omp-port-manifest.json  Inventário e hashes do pacote
 ```
 
-Essa árvore é **gerada** pelo exportador (`scripts/export-to-omp.mjs` no checkout de origem) e verificada por `omp-port-manifest.json`. Diretórios de runtime (sessões, caches, bancos locais) existem ao lado, mas não fazem parte da distribuição gerenciada.
+Essa árvore é copiada de `omp/agent/` e verificada pelo
+`omp-port-manifest.json`. Diretórios de runtime (sessões, caches, bancos
+locais) podem existir ao lado, mas não fazem parte do pacote público.
 
 ## Layout do harness no projeto
 

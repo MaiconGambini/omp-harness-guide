@@ -43,15 +43,18 @@ Comandos globais disponíveis no Oh My Pi após a instalação do harness, insta
 | `/harness-standards` | Antes de planejar ou implementar | Detecta o stack e carrega standards de projeto e globais; devolve perfis de risco, validação, permissão e skills aplicáveis |
 
 
-## Os scripts npm `omp:*`
+## Validar e instalar o pacote público
 
-Eles partem do checkout do harness e gerenciam a instalação global:
+O pacote real está em `omp/agent/`; não há scripts npm `omp:*` nem um
+exportador público. No checkout revisado, rode o validator e então copie a
+árvore para uma instalação limpa:
 
-| Comando | O que faz |
-|---|---|
-| `npm run omp:dry-run` | Pré-visualização determinística do que `omp:migrate` instalaria. Não escreve nada; duas execuções consecutivas são byte-a-byte idênticas |
-| `npm run omp:migrate` | Instala arquivos gerenciados em `~/.omp/agent`, preservando backups byte-a-byte dos arquivos substituídos. É idempotente e nunca toca arquivos não gerenciados |
-| `npm run omp:check` | Verifica a instalação contra o manifest; instalação limpa retorna `{"ok": true, "drift": []}` |
+```powershell
+node scripts/validate-public-subset.mjs --check-manifest
+$target = Join-Path $env:USERPROFILE ".omp\agent"
+New-Item -ItemType Directory -Force $target | Out-Null
+Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
+```
 
 ## Scripts do harness
 

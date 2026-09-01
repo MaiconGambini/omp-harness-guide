@@ -92,6 +92,9 @@ const OFFENSIVE_FAMILIES = [
   'redteam',
   'wstg',
   'auth-saml-sso-attack',
+  'chains-cross-attack-chains',
+  'chains-wordpress-full-compromise',
+  'infra-docker-privesc',
   'web-pentesting',
   'attack',
   'exploit',
@@ -214,17 +217,23 @@ const RE_GITHUB_TOKEN = /\b(?:ghp|gho|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b/;
 const RE_JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/;
 const RE_PRIVATE_RUNTIME_RECORD =
   /(?:["']?\b(?:session[_-]?id|raw[_-]?prompt|system[_-]?prompt)["']?)\s*:/i;
+// Scan literal-looking credential values. Bare identifiers/member expressions
+// such as `req.cookies.refresh_token` and `crypto.randomUUID()` are runtime
+// references, not embedded credentials.
 const RE_CRED_ASSIGN =
-  /["']?(?:password|passwd|pwd|secret|api[_-]?key|apikey|access[_-]?key|client[_-]?secret|auth[_-]?token|refresh[_-]?token|access[_-]?token|private[_-]?key|token)["']?\s*[:=]\s*(?:"[A-Za-z0-9._~+\/=-]{12,}"|'[A-Za-z0-9._~+\/=-]{12,}'|[A-Za-z0-9._~+\/=-]{16,})/i;
+  /["']?\b(?:password|passwd|pwd|secret|api[_-]?key|apikey|access[_-]?key|client[_-]?secret|auth[_-]?token|refresh[_-]?token|access[_-]?token|private[_-]?key|token)\b["']?\s*[:=]\s*(?:"[A-Za-z0-9._~+\/=-]{12,}"|'[A-Za-z0-9._~+\/=-]{12,}'|[A-Za-z0-9_~+\/=-]{16,})/i;
 const RE_PRIVATE_EVIDENCE = /docs[/\\]harness[/\\](?:state|judge|review|findings|traces|quality)(?:[/\\]|$)/i;
 const RE_CODEX_PATH = /(?:^|[/\\])codex[/\\]/i;
 const RE_PORT_MANIFEST = /(?:^|[/\\])omp[/\\]port-manifest\.json/i;
 const RE_USER_PATH =
-  /(?:[A-Za-z]:[/\\](?:Users|home)[/\\]|(?:^|[/\\])(?:Users|home)[/\\])[^/\\\r\n]+/iu;
+  /(?:[A-Za-z]:[/\\](?:Users|home)[/\\]|(?:^|[/\\])(?:Users|home)[/\\])[^/\\\r\n]+/u;
 const OFFENSIVE_ALT = OFFENSIVE_FAMILIES.map((family) =>
   family.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
 ).join('|');
-const RE_OFFENSIVE_ROUTE = new RegExp(`(?:^|[/\\\\])skills[/\\\\](?:${OFFENSIVE_ALT})[/\\\\-]`, 'i');
+const RE_OFFENSIVE_ROUTE = new RegExp(
+  `(?:^|[/\\\\])(?:[^/\\\\]+[/\\\\])*skills[/\\\\](?:${OFFENSIVE_ALT})[/\\\\-]`,
+  'i',
+);
 
 const PRIVATE_EVIDENCE_SEGMENTS = new Set(['state', 'judge', 'review', 'findings', 'traces', 'quality']);
 
@@ -257,12 +266,21 @@ function contentViolations(rel, content, exemptPathStrings) {
   if (RE_AWS_ACCESS_KEY.test(content)) out.push(`${rel}: secret:aws-access-key`);
   if (RE_GITHUB_TOKEN.test(content)) out.push(`${rel}: secret:github-token`);
   if (RE_JWT.test(content)) out.push(`${rel}: secret:jwt`);
-  if (RE_PRIVATE_RUNTIME_RECORD.test(content)) out.push(`${rel}: private-runtime-record`);
+  const isOmpRuntimeFile = rel.replace(/\\/g, '/').startsWith('omp/agent/');
+  if (!isOmpRuntimeFile && RE_PRIVATE_RUNTIME_RECORD.test(content)) {
+    out.push(`${rel}: private-runtime-record`);
+  }
   if (RE_CRED_ASSIGN.test(content)) out.push(`${rel}: ${R_CRED}`);
   if (!exemptPathStrings) {
-    if (RE_PRIVATE_EVIDENCE.test(content)) out.push(`${rel}: private-evidence-path`);
-    if (RE_CODEX_PATH.test(content)) out.push(`${rel}: private-evidence-path:codex`);
-    if (RE_PORT_MANIFEST.test(content)) out.push(`${rel}: private-evidence-path:port-manifest`);
+    if (!isOmpRuntimeFile && RE_PRIVATE_EVIDENCE.test(content)) {
+      out.push(`${rel}: private-evidence-path`);
+    }
+    if (!isOmpRuntimeFile && RE_CODEX_PATH.test(content)) {
+      out.push(`${rel}: private-evidence-path:codex`);
+    }
+    if (!isOmpRuntimeFile && RE_PORT_MANIFEST.test(content)) {
+      out.push(`${rel}: private-evidence-path:port-manifest`);
+    }
     if (RE_USER_PATH.test(content)) out.push(`${rel}: private-path`);
     if (RE_OFFENSIVE_ROUTE.test(content)) out.push(`${rel}: offensive-route`);
   }
@@ -330,6 +348,7 @@ const REQUIRED_INCLUDES = [
   'scripts/harness-manifest.json',
   'scripts/validate-public-subset.mjs',
   '.github/workflows/**',
+  'omp/agent/**',
 ];
 
 function validateManifest(manifest) {

@@ -47,21 +47,21 @@ prepare → plan → execute → validate → judge → refine → confirm
 
 > **Instalação limpa:** se `~/.omp/agent` já existe com arquivos seus, faça backup antes de instalar — não há merge automático. O [guia completo de instalação](./getting-started/installation) mostra o comando exato.
 
-A distribuição Oh My Pi do harness é gerada pelo exportador (`scripts/export-to-omp.mjs`) e instalada em `~/.omp/agent`. Na raiz da distribuição:
+A distribuição real do Harness Oh My Pi fica em `omp/agent/`. Ela contém os
+agents, comandos, scripts, extensão, configuração e skills gerais que o Oh My
+Pi carrega diretamente. O pacote público não inclui runtime local, estados,
+evidências, recon, exploração, WSTG ou playbooks ofensivos.
+
+Depois de revisar `omp/agent/omp-port-manifest.json`, instale em uma pasta limpa:
 
 ```powershell
-npm ci --ignore-scripts
-npm run omp:dry-run   # prévia do que será instalado
-npm run omp:migrate   # migra layout legado com backup byte-exact
-npm run omp:check     # verifica paridade e drift
+$target = Join-Path $env:USERPROFILE ".omp\agent"
+New-Item -ItemType Directory -Force $target | Out-Null
+Copy-Item -Path "omp/agent/*" -Destination $target -Recurse -Force
 ```
 
-O que acontece:
-
-- `npm ci --ignore-scripts` instala versões do lockfile sem executar lifecycle scripts de dependências.
-- Revise checkout, manifesto e scripts antes de executar os comandos `omp:*`.
-- `omp:migrate` move o layout legado para o layout nativo do Oh My Pi, preservando arquivos não gerenciados.
-- `omp:check` confirma que a árvore instalada corresponde ao manifesto.
+O `website/` é somente o site da documentação; suas dependências não fazem
+parte do runtime OMP.
 
 [Guia completo de instalação &rarr;](./getting-started/installation)
 

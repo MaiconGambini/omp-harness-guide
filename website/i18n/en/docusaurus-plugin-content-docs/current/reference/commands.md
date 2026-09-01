@@ -58,15 +58,18 @@ Names start with `/` when invoked in the Oh My Pi chat (for example,
 | `/harness-mcp-inventory` | Inventory MCPs | Lists MCP servers and detects drift or secret-bearing keys without exposing values. |
 | `/harness-context-budget` | Audit context load | Reports the context budget of skills, commands, and MCP surfaces; recommends lazy-loading. |
 
-## The `omp:*` npm scripts
+## Validate and install the public package
 
-These run from the harness source checkout and manage the global install:
+The real package is under `omp/agent/`; there are no public `omp:*` npm
+scripts or exporter. From the reviewed checkout, run the validator and then
+copy the tree into a clean installation:
 
-| Command | What it does |
-|---|---|
-| `npm run omp:dry-run` | Deterministic preview of what `omp:migrate` would install. Writes nothing; two consecutive runs are byte-identical. |
-| `npm run omp:migrate` | Installs the managed files into `~/.omp/agent`, backing up every replaced file byte-exactly under `~/.omp/agent/backups/`. Idempotent: a rerun after a full migration reports `migrated: 0`. Unmanaged files are never touched. |
-| `npm run omp:check` | Verifies the install against the manifest; a clean install reports `{"ok": true, "drift": []}`. This is the drift inspection command. |
+```powershell
+node scripts/validate-public-subset.mjs --check-manifest
+$target = Join-Path $env:USERPROFILE ".omp\agent"
+New-Item -ItemType Directory -Force $target | Out-Null
+Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
+```
 
 ## The harness scripts
 
