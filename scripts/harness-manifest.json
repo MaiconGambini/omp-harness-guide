@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "include": [
+    "README.md",
+    ".gitignore",
+    ".github/CODEOWNERS",
+    "website/**",
+    "scripts/harness-manifest.json",
+    "scripts/validate-public-subset.mjs",
+    ".github/workflows/**"
+  ],
+  "exclude": [
+    "docs/harness/state/**",
+    "docs/harness/judge/**",
+    "docs/harness/review/**",
+    "docs/harness/findings/**",
+    "docs/harness/traces/**",
+    "docs/harness/quality/**",
+    "codex/**",
+    "omp/port-manifest.json",
+    "*.env",
+    ".env.*",
+    "*.env.*",
+    "*.pem",
+    "*.key",
+    "*.secret",
+    "*.local.json",
+    "*.local.jsonc",
+    ".npmrc"
+  ]
+}

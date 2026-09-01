@@ -1,0 +1,59 @@
+name: Validate Docs
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: source
+          persist-credentials: false
+
+      - name: Checkout trusted validator revision
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Select validator revision
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "VALIDATOR_DIR=$GITHUB_WORKSPACE/trusted" >> "$GITHUB_ENV"
+          else
+            echo "VALIDATOR_DIR=$GITHUB_WORKSPACE/source" >> "$GITHUB_ENV"
+          fi
+
+      - name: Public-subset validator
+        run: node "$VALIDATOR_DIR/scripts/validate-public-subset.mjs" --root "$GITHUB_WORKSPACE/source"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: source/website/package-lock.json
+
+      - name: Install website dependencies
+        run: npm ci --ignore-scripts
+        working-directory: source/website
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: source/website
+
+      - name: Build site
+        run: npm run build
+        working-directory: source/website
+
+      - name: Scan generated build output
+        run: node "$VALIDATOR_DIR/scripts/validate-public-subset.mjs" --root "$GITHUB_WORKSPACE/source" --scan-build

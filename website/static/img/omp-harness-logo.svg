@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none" role="img" aria-label="Harness Oh My Pi">
+  <rect width="240" height="240" rx="24" fill="#0b1120"/>
+  <rect x="8" y="8" width="224" height="224" rx="18" stroke="#26324a" stroke-width="2"/>
+  <text x="120" y="104" text-anchor="middle" fill="#4ade80" font-family="monospace" font-size="56" font-weight="700">π</text>
+  <text x="120" y="142" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="16" letter-spacing="3">HARNESS</text>
+  <text x="120" y="170" text-anchor="middle" fill="#cbd5e1" font-family="monospace" font-size="13" letter-spacing="1">OH MY PI</text>
+</svg>

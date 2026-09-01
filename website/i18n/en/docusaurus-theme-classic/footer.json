@@ -1,0 +1,30 @@
+{
+  "link.title.Docs": {
+    "message": "Docs",
+    "description": "The title of the documentation footer column"
+  },
+  "link.title.Projeto": {
+    "message": "Project",
+    "description": "The title of the project footer column"
+  },
+  "link.item.label.Introdução": {
+    "message": "Introduction",
+    "description": "The label of the introduction footer link"
+  },
+  "link.item.label.Instalação": {
+    "message": "Installation",
+    "description": "The label of the installation footer link"
+  },
+  "link.item.label.PREVC": {
+    "message": "PREVC",
+    "description": "The label of the PREVC footer link"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of the GitHub footer link"
+  },
+  "copyright": {
+    "message": "© 2026 Harness Oh My Pi. Built with Docusaurus.",
+    "description": "The footer copyright"
+  }
+}

@@ -1,0 +1,26 @@
+# Docusaurus site dependencies and generated output.
+website/node_modules/
+website/build/
+website/.docusaurus/
+
+# Local validation reports and logs.
+validate-report.txt
+*.report.json
+*.report.txt
+*.log
+*.jsonl
+
+# Local credentials, keys, and machine-specific overrides (never public).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.secret
+*.local.json
+*.local.jsonc
+
+# Private harness runtime/evidence must never be staged in this public repo.
+docs/harness/
+codex/
+omp/port-manifest.json

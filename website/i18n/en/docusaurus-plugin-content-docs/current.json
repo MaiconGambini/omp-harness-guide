@@ -1,0 +1,30 @@
+{
+  "version.label": {
+    "message": "Current",
+    "description": "The label for the current documentation version"
+  },
+  "sidebar.tutorialSidebar.category.Começando": {
+    "message": "Getting Started",
+    "description": "The label for the Getting Started category"
+  },
+  "sidebar.tutorialSidebar.category.Conceitos": {
+    "message": "Concepts",
+    "description": "The label for the Concepts category"
+  },
+  "sidebar.tutorialSidebar.category.Guias": {
+    "message": "Guides",
+    "description": "The label for the Guides category"
+  },
+  "sidebar.tutorialSidebar.category.Referência": {
+    "message": "Reference",
+    "description": "The label for the Reference category"
+  },
+  "sidebar.tutorialSidebar.category.Adoção": {
+    "message": "Adoption",
+    "description": "The label for the Adoption category"
+  },
+  "sidebar.tutorialSidebar.category.Solução de problemas": {
+    "message": "Troubleshooting",
+    "description": "The label for the Troubleshooting category"
+  }
+}

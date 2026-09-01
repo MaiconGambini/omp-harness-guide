@@ -1,0 +1,7 @@
+# Keep publication controls under explicit owner review.
+/.github/CODEOWNERS @MaiconGambini
+/.github/workflows/ @MaiconGambini
+/scripts/harness-manifest.json @MaiconGambini
+/scripts/validate-public-subset.mjs @MaiconGambini
+/README.md @MaiconGambini
+/website/ @MaiconGambini

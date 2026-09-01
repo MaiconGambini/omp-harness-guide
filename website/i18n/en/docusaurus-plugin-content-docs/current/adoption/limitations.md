@@ -1,0 +1,59 @@
+---
+sidebar_position: 4
+---
+
+# Limitations
+
+What Harness Oh My Pi does not do in the current version.
+
+## It is not a SaaS product
+
+The harness is a set of configuration files and scripts. There is no server,
+API, authentication or dashboard.
+
+## It does not merge into existing configuration
+
+The supported path is a clean install: `omp:migrate` backs up and replaces
+only managed files and never merges. If you have an existing
+`~/.omp/agent`, migration preserves your unmanaged files but there is no
+merge script that reconciles your current configuration with the harness.
+
+## It is not a package manager
+
+There is no installation CLI, automatic update or semantic versioning.
+Updates should use a reviewed revision: inspect the diff, `package.json`,
+manifest, and lockfile, then run `npm ci --ignore-scripts` followed by
+`npm run omp:check`.
+
+## It does not document all skills
+
+The site documents the harness workflow. Specialized development skills
+(frontend, backend, Python, TypeScript) that ship with the harness do not
+have their own chapters in the documentation.
+
+## It is not fully cross-platform
+
+The harness was designed and tested on Windows with PowerShell 5.1+. The
+install and migration commands are npm scripts; the Node runtime is
+portable, but shell scripts for other operating systems are not provided.
+
+## It does not prove application security
+
+The harness verifies its own lifecycle and evidence. It does **not** provide
+application authorization proof (RLS/IDOR) — that belongs to the application
+and its own tests. A project without a declared security contract gets a
+named `unavailable` gap, never a pass.
+
+## Missing capabilities are gaps, not features
+
+Protocols and integration surfaces that are not implemented (for example,
+A2A/UCP/BCP-style agent interoperability) are labeled as gaps. Cost and
+usage sources the runtime does not supply are recorded as explicit
+`unavailable` values — never invented numbers.
+
+## Dependencies
+
+- Oh My Pi installed and working.
+- Node.js 20+ for the scripts.
+- PowerShell 5.1+ on Windows.
+- Git for cloning and version control.
