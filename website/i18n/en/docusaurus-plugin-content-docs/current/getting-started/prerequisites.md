@@ -16,6 +16,8 @@ Before installing Harness Oh My Pi, you need:
 - **PowerShell 5.1+** on Windows. The harness was designed and tested in this
   environment.
 
+## What is not required
+
 No database, container, or external service is required. The harness
 operates as local configuration files and scripts under `~/.omp/agent`.
 

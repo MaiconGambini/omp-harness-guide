@@ -94,7 +94,7 @@ Oh My Pi reads `~/.omp/agent` at startup. It registers:
   trace adapter `harness-omp-trace.ts`).
 - Agents in `agents/` (specialized subagent definitions).
 
-## What is NOT loaded
+**What is NOT loaded**
 
 - `scripts/` — utilities run manually (or by commands).
 - `backups/` — restore material only.

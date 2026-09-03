@@ -4,65 +4,65 @@ sidebar_position: 1
 
 # Commands
 
-Global commands available in Oh My Pi after installing the harness. Each
-command runs a global skill or a diagnostic script. This reference lists
-every command by family and then walks through the usage of the main
-commands.
+Global commands available in Oh My Pi after installing the public package,
+installed in `~/.omp/agent/commands/`. They have two layers:
+
+- **Contract commands shared by adapters:** `/prevc`, `/quality`, `/refine`,
+  `/harness-session-start`, and `/harness-clean-handoff` express lifecycle,
+  quality, continuity, and confirmation.
+- **OMP-native commands and surfaces:** `/planner`, `/harness-status`,
+  `/score`, `/capabilities`, `/fallback`, `/trace`,
+  `/harness-security-scan`, `/harness-mcp-inventory`, and
+  `/harness-context-budget` use Oh My Pi scheduling, observability, or
+  coordination. There are no public `omp:*` commands.
 
 Names start with `/` when invoked in the Oh My Pi chat (for example,
-`/prevc`).
+`/prevc`). The family tables below are functional groupings; the two layers
+above identify each command's contract or runtime ownership.
 
 ## Overview by family
 
-### Lifecycle and planning
+### Lifecycle and quality
 
 | Command | When to use | What it does |
 |---|---|---|
-| `/prevc` | Any significant work | The sole lifecycle controller: plan, review, execute, validate, judge, refine, confirm, handoff. Every phase transition is durable (`harness-prevc-state.mjs`). |
-| `/planner` | Plan significant work | Size-gated pipeline: `wayfinder` for large efforts, `grill-with-docs` in AUTO, `to-tickets` to decompose; ends at `awaiting_plan_approval` |
-| `/harness-spec` | Medium or large feature | Creates or proposes an Agent OS spec in `agent-os/specs/<slug>/` from the global templates. |
-| `/propose-skill` | Recurring process in history | Scans history for repeated command sequences and proposes (or, with `--activate`, installs) a generated skill. Zero auto-activation. |
+| `/prevc` | Any significant work | The sole lifecycle controller: prepare, plan, execute, validate, judge, refine, confirm, and handoff. Every phase transition is durable (`harness-prevc-state.mjs`). |
+| `/quality` | Before a commit (or any time) | Runs the measured quality gate (`--mode local` by default, `--mode full` before a commit) and the risk router. Exit 1 = fix the metric; exit 2 = harness blocker; an unavailable metric or missing/stale report is a named gap, never a pass. |
+| `/refine` | After Judge, or for an operator note | Dispatches the read-only `refiner` over the findings window and routes proposals by blast radius; writes nothing. `--note` records an `operator_note` finding. |
 
-### Session
-
-| Command | When to use | What it does |
-|---|---|---|
-| `/harness-session-start` | At the start of every session | Reads global context, durable PREVC phase, feature state, handoff, and startup path; runs the baseline if safe; declares the active task with AC. |
-| `/harness-clean-handoff` | At the end of every session | Reads the durable lifecycle, collects evidence, blockers, progress notes, and git status; returns a handoff report. Never marks completion by itself. |
-
-### Project
+### Native OMP commands
 
 | Command | When to use | What it does |
 |---|---|---|
-| `/harness-init` | First time in a project | Non-mutating audit of Entry, Context, State, Feedback, Evaluation, and Skills layers; produces a gap report with recommended fixes. |
-| `/harness-bootstrap` | Install the full harness package | Proposes the full package (`AGENTS.md`, `feature_list.json`, `docs/harness/*`, `docs/{ARCHITECTURE,PRODUCT,RELIABILITY}.md`, `agent-os/*`) and writes only after confirmation. |
-| `/harness-standards` | Before planning or implementing | Detects the stack and loads project and global standards; returns risk, validation, and skill profiles. |
-| `/harness-status` | Check readiness | Prints git state, durable PREVC phase, handoff presence, context budget, security posture, score, fallback events, capabilities, and red-team status; identifies the next best action. |
-
-### Quality, Refine, and tracing
-
-| Command | When to use | What it does |
-|---|---|---|
-| `/quality` | Before a commit (or any time) | Runs the measured quality gate (`--mode local` by default, `--mode full` before a commit) and the risk router; prints the metric table and the tier with its reason. Exit 1 = fix the metric, never relax the threshold; exit 2 = harness blocker. An unavailable metric or a missing/stale report is a named gap, never a pass. |
-| `/refine` | After Judge, or to record an operator note with `--note "<what I fixed by hand>"` | Dispatches the read-only `refiner` over the findings window; routes proposals by blast radius; writes nothing. `--note` records an `operator_note` finding that alone clears the propose bar. |
-| `/score` | On demand | Derives the aggregate quality score (0-10) from the newest gate reports and persists it to the project's quality area (derived observability only — never a gate input). |
-| `/trace` | Inspect the trace | Verifies the hash-chained event stream (`--verify`), reads recent records (`--read`), prunes records older than 90 days (`--prune`), or appends lifecycle records (`--record`) through the shared contract. |
-| `/capabilities` | Multimodal routing | Detects and reports per-model multimodal capabilities (text / text+image) and persists `docs/harness/capabilities.json`. |
-| `/fallback` | Provider-fallback log | Records, reads, or prunes provider-fallback events (one bounded re-dispatch per lane; orchestrator failures are alert-only, never auto-retried). |
-
-### Security and diagnostics
-
-| Command | When to use | What it does |
-|---|---|---|
-| `/harness-security-scan` | Audit the security surface | Scans the repo harness, MCPs, and configuration for secret and supply-chain risks; summarizes PASS/WARN/FAIL without printing values. |
+| `/planner` | Plan significant work in OMP | OMP-native size-gated Planning role: `wayfinder` for large efforts, `grill-with-docs` in AUTO, and `to-tickets` to decompose; ends at `awaiting_plan_approval`. |
+| `/harness-spec` | Medium or large feature in OMP | Creates or proposes an Agent OS spec in `agent-os/specs/<slug>/` from the global templates. |
+| `/propose-skill` | A recurring OMP process | Scans history for repeated command sequences and proposes a generated skill; activation remains manual. |
+| `/trace` | Inspect the native OMP trace | Verifies, reads, prunes, or appends the hash-chained redacted event stream through the shared contract. |
+| `/harness-status` | Check readiness | Prints git state, durable PREVC phase, handoff, context budget, security posture, and named observable surfaces. |
+| `/score` | On demand | Derives the aggregate quality score from recent gate reports; it is observability, never a gate input. |
+| `/capabilities` | Multimodal routing | Detects and reports per-model multimodal capabilities. |
+| `/fallback` | Provider-fallback log | Records, reads, or prunes provider-fallback events. |
+| `/harness-security-scan` | Audit the security surface | Scans the harness, MCPs, and configuration for secret and supply-chain risks without printing values. |
 | `/harness-mcp-inventory` | Inventory MCPs | Lists MCP servers and detects drift or secret-bearing keys without exposing values. |
 | `/harness-context-budget` | Audit context load | Reports the context budget of skills, commands, and MCP surfaces; recommends lazy-loading. |
+
+### Session and project
+
+| Command | When to use | What it does |
+|---|---|---|
+| `/harness-session-start` | At the start of every session | Reads global context, durable PREVC phase, feature state, handoff, and startup path; runs the baseline if safe and declares the active task with AC. |
+| `/harness-clean-handoff` | At the end of every session | Collects evidence, blockers, progress notes, and git status; returns a handoff report and never marks completion by itself. |
+| `/harness-init` | First time in a project | Performs a non-mutating audit and produces a gap report with recommended fixes. |
+| `/harness-bootstrap` | Install the full harness package | Proposes the full package and writes only after explicit confirmation. |
+| `/harness-standards` | Before planning or implementing | Detects the stack and loads applicable project and global standards. |
 
 ## Validate and install the public package
 
 The real package is under `omp/agent/`; there are no public `omp:*` npm
-scripts or exporter. From the reviewed checkout, run the validator and then
-copy the tree into a clean installation:
+scripts or exporter. The distribution has no semantic release identifier; use a
+reviewed Git revision and the manifest hashes to identify its contents. From
+the reviewed checkout, run the validator and then copy the tree into a clean
+installation:
 
 ```powershell
 node scripts/validate-public-subset.mjs --check-manifest
@@ -187,7 +187,8 @@ node ~/.omp/agent/scripts/harness-briefing.mjs
 - When invoked directly, it returns only a handoff report: it does not mark
   feature state, infer confirmation, or assert completion.
 
-### 6. Plan significant work — `/planner`
+### 6. Plan significant work — `/planner` (OMP-native)
+
 
 ```
 /planner <objective>
@@ -234,6 +235,17 @@ node ~/.omp/agent/scripts/harness-briefing.mjs
 - `--note` records an `operator_note` finding through the scheduler's
   write-once findings path and stops.
 
+### 9. Trace — `/trace`
+
+```
+/trace
+```
+
+- Verifies the hash chain (`harness-trace.mjs --verify`), reads recent records,
+  prunes by retention, or records lifecycle entries through the owning
+  commands.
+- The stream is audit evidence only after `--verify` passes.
+
 ## Quick commands (cheat sheet)
 
 ```text
@@ -258,7 +270,7 @@ node ~/.omp/agent/scripts/harness-briefing.mjs
 # Pause or close with durable context
 /harness-clean-handoff
 
-# Plan significant work
+# OMP-native planning
 /planner <objective>
 
 # Quality, refine, and observability

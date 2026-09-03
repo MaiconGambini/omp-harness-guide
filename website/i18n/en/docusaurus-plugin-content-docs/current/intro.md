@@ -5,20 +5,45 @@ slug: intro
 
 # Introduction
 
-Harness Oh My Pi turns Oh My Pi from an agent that "rediscovers everything
-each session" into an agent that keeps state, respects WIP=1, produces
-evidence, and hands off cleanly between sessions.
+### Comparison: Traditional Chat vs. Harness Engineering
 
-The harness is a port of the OpenCode harness onto Oh My Pi native
-primitives: parallel dispatch with `task` in one `tasks[]` wave, `hub`
-coordination, the `todo` tool (WIP=1), and the extension event bus (`pi.on`).
-The **PREVC** lifecycle remains the same runtime-neutral contract; what
-changes is the adapter.
+| AI chat without a harness | Engineering with a harness |
+|---|---|
+| Unbounded edits and unpredictable scope | Declared ownership and bounded edits |
+| Broken builds reported as complete | Verification requires executable evidence |
+| Test results asserted without a command | Terminal output records what actually ran |
+| Session context disappears | Durable state and handoff preserve continuity |
+
+### PREVC, OpenCode, and Oh My Pi
+
+Harness Oh My Pi organizes agent work under a common PREVC contract. The
+contract groups seven steps into four phases: Prepare (`prepare + plan`),
+Execute (`execute`), Validate (`validate + judge`), and Confirm
+(`refine + confirm`).
+
+OpenCode is the methodological and continuity adapter in this design: it
+organizes planning conventions, durable artifacts, and session handoffs. OMP
+is the native engine that executes the same contract with its own runtime
+primitives: `task`, `tasks[]`, `hub`, `todo`, and native extensions.
+
+Sharding is conditional on the plan: use it only for independent lanes with
+non-overlapping ownership. These primitives describe the execution mechanism;
+this documentation does not turn them into a throughput or benchmark claim.
+
 
 ## The lifecycle
 
-Significant work passes through a fixed sequence of phases, each with the
-evidence it must produce before advancing:
+The seven contract steps are grouped into four phases. Grouping does not remove
+steps; it gives each boundary a clear owner and expected evidence.
+
+| Phase | Grouped steps | Expected result |
+|---|---|---|
+| **Prepare** | `prepare` + `plan` | Context, risk, scope, and a plan awaiting approval. |
+| **Execute** | `execute` | Changes only within the approved scope. |
+| **Validate** | `validate` + `judge` | Gates run and an independent Judge receipt. |
+| **Confirm** | `refine` + `confirm` | A reviewed improvement proposal and explicit operator confirmation. |
+
+The literal sequence remains:
 
 ```text
 prepare → plan → execute → validate → judge → refine → confirm
@@ -26,13 +51,14 @@ prepare → plan → execute → validate → judge → refine → confirm
 
 - **prepare** — discovers context and classifies risk.
 - **plan** — defines objective, scope, non-scope, and acceptance criteria.
-- **execute** — executes only the approved scope, WIP=1.
+- **execute** — executes only the approved scope, with WIP=1.
 - **validate** — measures the result with gates and real evidence.
 - **judge** — a read-only evaluator compares the work with the contract.
 - **refine** — a read-only refiner proposes improvements; it does not write
   or vote.
 - **confirm** — the operator reviews the evidence and confirms; no agent
   self-confirms.
+
 
 ## What you'll find
 
@@ -47,9 +73,12 @@ prepare → plan → execute → validate → judge → refine → confirm
 
 ## Prerequisites
 
+Reading the documentation does not require the runtime. To execute the
+harness, install the Oh My Pi base and the public package in `~/.omp/agent`,
+plus:
+
 - Windows with PowerShell 5.1+
-- Oh My Pi installed
-- Node.js 20+ and npm
+- Node.js 20+
 - Git
 
 ## Quick install

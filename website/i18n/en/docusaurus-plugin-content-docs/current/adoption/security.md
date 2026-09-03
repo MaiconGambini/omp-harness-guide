@@ -44,7 +44,7 @@ security lives in the planning and approval phase, not in automatic blocks.
 - **Public-subset validation** — a manifest and CI check reject excluded
   families, private evidence, and secret-shaped text from the public tree.
 
-## Permission policy (asks for approval)
+## Mandatory guardrails and permission policy
 
 Explicit approval is required for:
 
@@ -59,11 +59,13 @@ do not write findings either; the scheduler validates and writes them.
 Configuration changes require a restart before they affect the Oh My Pi
 process.
 
-## Logs and retention
+## Security guard
 
-The trace adapter keeps **redacted**, hash-chained records with bounded
-retention (prune drops records older than 90 days). Logs help with
-diagnosis; they do not prove that an objective was completed correctly.
+The security guard blocks recognized patterns such as recursive removal,
+destructive Git operations, remote shells, download-then-execute flows, and
+access to sensitive paths. Recognition is a guardrail, not complete security.
+
+## Redaction and retention
 
 ## Secrets
 

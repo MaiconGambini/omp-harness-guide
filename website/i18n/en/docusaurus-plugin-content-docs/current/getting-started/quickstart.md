@@ -5,31 +5,36 @@ sidebar_position: 1
 # Quickstart
 
 This path takes you from a clean project to your first goal in Harness Oh My
-Pi. OMP combines the PREVC lifecycle with native execution of up to 32
-subagents, parallel fan-out, and test sharding. For the complete installation,
-including backup, obtaining, and validating the package, see
-[Installation](./installation).
+Pi. For the complete installation, including backup, obtaining, and validating
+the package, see [Installation](./installation).
 
-1. **Install the core in a clean directory.** After obtaining and reviewing the
-   repository checkout, run the same copy-pasteable block from the
-   [installation guide](./installation):
+## Step 1: Install the harness package
 
-   ```powershell
-   $target = Join-Path $env:USERPROFILE ".omp\agent"
-   New-Item -ItemType Directory -Force $target | Out-Null
-   Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
-   ```
+After obtaining and reviewing the repository checkout, copy the harness distribution tree into the Oh My Pi agent directory (`~/.omp/agent`):
 
-2. **Prepare a goal in the project.** Inside Oh My Pi, run exactly:
+```powershell
+$target = Join-Path $env:USERPROFILE ".omp\agent"
+New-Item -ItemType Directory -Force $target | Out-Null
+Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
+```
 
-   ```text
-   /prevc prepare "Criar rota POST /auth/login com JWT"
-   ```
+Close and reopen Oh My Pi so that the new commands, agents, and native extensions load at startup.
 
-3. **Observe the cycle before executing.** PREVC presents the plan for explicit
-   approval. After approval, OMP dispatches independent lanes and test shards
-   in parallel when the plan allows, runs validation, and gathers test
-   evidence. The Judge compares the result with the acceptance criteria, and
-   the handoff records what was verified, which files changed, blockers, and
-   the next action for continuity between sessions. See [First Session](./first-session)
-   for the complete operational flow.
+## Step 2: Start the first task with PREVC
+
+In the Oh My Pi terminal, inside your project directory, run the task preparation command:
+
+```text
+/prevc prepare "Create POST /auth/login route with JWT"
+```
+
+The harness classifies the task risk, discovers the repository's technical context, and starts the controlled phase transition.
+
+## Step 3: Observe the complete native-engine flow
+
+OMP executes PREVC's seven steps in four phases. Grouping defines the boundaries; it does not remove any step:
+
+1. **Prepare (`prepare + plan`):** The harness discovers context, classifies risk, defines ownership (`src/auth.py`, `tests/test_auth.py`), and waits for plan approval.
+2. **Execute (`execute`):** After approval, the scheduler uses `task` and one `tasks[]` call when independent lanes exist; `hub` coordinates messages between agents.
+3. **Validate (`validate + judge`):** The runtime runs verification commands and a read-only Judge compares the result with the contract. Output must be captured in the terminal; this guide does not provide results from a real execution.
+4. **Confirm (`refine + confirm`):** Refine proposes improvements without writing or voting, and the operator reviews the evidence before confirming the handoff.

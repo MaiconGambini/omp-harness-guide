@@ -8,13 +8,15 @@ sidebar_position: 4
 prepare → plan → execute → validate → judge → refine → confirm
 ```
 
-This page is about the continual loop: how review feedback becomes a
-structured signal that can guide later runs.
+This page documents the continual loop in the public OMP package. The parallel
+dispatch described here is specific and experimental; use it only when the
+plan declares independent lanes, disjoint ownership, and compatible evidence.
 
 The loop turns review feedback into a structured signal that can guide later
 runs. It does not claim that an agent "learns by itself": the loop is
-project-local, measured through configured signals, and bounded by
-permissions and human confirmation.
+project-local, measured through configured signals, and bounded by permissions
+and human confirmation.
+
 
 ## Behavior loop
 
@@ -117,7 +119,8 @@ The loop is bounded by mandatory guardrails:
   multimodal capability returns `blocked: multimodal-unsupported` instead of
   converting or dropping the image.
 
-## Permissions
+**Permissions**
+
 
 Agent-specific permissions are declared in configuration, and the read-only
 roster backs them. Reviewers return results to the scheduler; `refiner` and
@@ -125,7 +128,8 @@ roster backs them. Reviewers return results to the scheduler; `refiner` and
 are **not** an operating-system sandbox. Configuration changes require a
 restart before they affect the Oh My Pi process.
 
-## Tracing
+**Tracing**
+
 
 The OMP-native trace adapter (`~/.omp/agent/extensions/harness-omp-trace.ts`)
 subscribes to the **native extension event bus** (`pi.on`) and persists the
@@ -148,7 +152,8 @@ statusline, and ad-hoc shell history are never tracing. Only native extension
 events and explicit `--record` appends through the shared contract produce
 stream records.
 
-## What is live
+## What is live and what is not
+
 
 - Deterministic findings and ledger schemas and validation.
 - Measured gates, risk routing, and fail-closed behavior.
@@ -156,7 +161,7 @@ stream records.
 - Native OMP event tracing with redaction and hash chaining.
 - Automated tests for deterministic paths.
 
-## What is not live or proven
+**What is not live or proven**
 
 - Automatic prose-rule activation is not active; the auto-activation control
   ships off.

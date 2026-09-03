@@ -9,12 +9,12 @@ its own scope, under PREVC lifecycle control. The scheduler is the
 Execute-phase dispatcher: it receives the approved plan, dispatches the
 independent lanes at the same time, and reconciles the results.
 
-## The OMP execution model
+**OMP execution model.** Oh My Pi dispatches lanes natively:
 
-Oh My Pi dispatches lanes natively:
+
 
 - One `task` call carries a **`tasks[]` array** — all independent lanes in a
-  single wave (up to 32 truly-concurrent subagents).
+  single wave of independent lanes.
 - `hub` handles peer coordination; **results auto-deliver** — there is no
   background stub and no status-polling fallback.
 - Reviewers also run concurrently: code review + architecture review in one
@@ -75,6 +75,57 @@ file ownership — **one write-capable lane per file at a time**:
 Ownership that crosses = lanes that are **not** independent — serialize or
 merge them into a single lane. It is a prompt rule, not a lock: two lanes on
 the same file silently overwrite each other.
+
+## Specific and experimental example: four modules
+
+The following example illustrates the OMP-native `task` shape and test
+partitioning. The file names, agents, shards, and outputs are illustrative, not
+measurements or a universal recipe.
+
+### 1. Concurrent dispatch through `task`
+
+```json
+{
+  "context": "Refactor four independent domains without shared files.",
+  "tasks": [
+    { "name": "AuthShard", "agent": "implementer", "task": "Refactor auth schemas and run its focused tests." },
+    { "name": "BillingShard", "agent": "implementer", "task": "Refactor billing schemas and run its focused tests." },
+    { "name": "CatalogShard", "agent": "implementer", "task": "Refactor catalog schemas and run its focused tests." },
+    { "name": "NotificationShard", "agent": "implementer", "task": "Refactor notification schemas and run its focused tests." }
+  ]
+}
+```
+
+### 2. Observable evidence trail (illustrative format)
+
+Each lane returns a terminal envelope with real output when executed. This
+snippet shows only the shape:
+
+```text
+[AuthShard] completed in <time> -> focused tests: <result> (exit 0)
+[BillingShard] completed in <time> -> focused tests: <result> (exit 0)
+Reconciled tree: <count> shards, <count> file conflicts.
+Full gate: <result>.
+```
+
+### 3. Illustrative wall-clock calculation
+
+The formula explains how to measure a run; these values are synthetic:
+
+```text
+Reduction = (T_sequential - T_parallel) / T_sequential
+          = (128.0s - 32.0s) / 128.0s
+          = 75.0%  # example calculation, not a published result
+```
+
+Measure the same plan in the target environment before comparing runs.
+
+## Authorization
+
+- **Manual mode:** `/prevc prepare <objective>` stops at
+  `awaiting_plan_approval`; after approval, `/prevc run` authorizes Execute.
+- **Autonomous mode:** an instruction to execute a named plan or spec end to
+  end is the authorization and stops once at `awaiting_confirmation`.
 
 ## Known limits
 

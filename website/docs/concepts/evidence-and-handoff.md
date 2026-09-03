@@ -18,7 +18,15 @@ Os degraus são cumulativos e estão ordenados do mais fraco ao mais forte:
 
 Não promova uma conclusão para um degrau sem a prova correspondente. Um Rung 1 não substitui um Rung 5, e uma saída de teste não prova por si só que o fluxo ao vivo foi exercitado.
 
-## Envelope filho da lane
+## Camadas de verificação
+
+Antes de declarar uma feature como concluída, três camadas estruturadas são verificadas:
+
+1. **Static (Rung 3)** — typecheck, linters e validações de schema passam.
+2. **Runtime (Rungs 4–5)** — critérios de aceite são demonstrados com comandos reais rodados no terminal e saída capturada.
+3. **System** — o comando de verificação unificado do projeto sai com código 0, e o estado persistido reflete a conclusão.
+
+## O envelope de evidência da lane
 
 Cada lane retorna ao pai um envelope curto com exatamente quatro chaves:
 
@@ -58,5 +66,20 @@ O próximo agente deve conseguir retomar sem reconstruir decisões pela memória
 O **OpenCode** fornece a metodologia e a referência para interpretar esses degraus, além da continuidade entre sessões. O **Oh My Pi** fornece o motor nativo de **32 subagentes**, fan-out paralelo e sharding para coletar provas de lanes independentes. O caminho OMP é relevante quando a verificação pode ser dividida sem compartilhar arquivos ou contexto; a evidência de cada lane continua separada e deve ser reconciliada.
 
 ## Próximo passo
+
+A conclusão do ciclo exige também um handoff presente: a transição `awaiting_confirmation → complete` só acontece com confirmação do operador **e** um `docs/harness/session-handoff.md` existente.
+
+## PREVC, OpenCode e Oh My Pi na coleta de evidências
+
+PREVC define a evidência exigida como contrato comum. O OpenCode atua como
+adaptador metodológico e de continuidade, organizando artefatos e handoffs. O
+Oh My Pi fornece o motor nativo para coletar evidência no runtime: por exemplo,
+`hub(op="start")` supervisiona processos, portas e logs quando a lane tem essa
+capacidade autorizada.
+
+O uso de processos vivos e Rung 5 é condicionado ao critério de aceite e ao
+plano da tarefa. O fato de uma ferramenta existir não prova que uma execução
+ocorreu; o recibo precisa conter a saída real e passar pela verificação
+correspondente.
 
 Veja [PREVC](./prevc) para o ciclo de entrega ou [Continual Harness](./continual-harness) para continuidade e melhoria.

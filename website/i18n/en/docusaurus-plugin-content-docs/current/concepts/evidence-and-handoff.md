@@ -12,6 +12,20 @@ This page is about the evidence boundary and the session handoff.
 
 The harness requires that every completion has evidence — "it worked on my
 machine" is not enough.
+## Evidence Rungs 1–5
+
+Evidence is classified into five increasing levels:
+
+1. **Rung 1 — Chat assertion:** never accepted as proof.
+2. **Rung 2 — Static diff inspection:** proves written characters, not syntax or
+   behavior.
+3. **Rung 3 — Deterministic static verification:** typecheck, lint, schema
+   validation, or compilation passes.
+4. **Rung 4 — Automated tests:** captured test output demonstrates behavior in
+   the test environment.
+5. **Rung 5 — Live runtime verification:** a real process, request, and observed
+   response demonstrate the acceptance criterion.
+
 
 ## Verification layers
 
@@ -32,6 +46,19 @@ Each lane returns a small, structured terminal envelope:
 - evidence (real command output, not a description);
 - failed attempts;
 - decision, blocker, and next step.
+## Evidence example
+
+```json
+{
+  "id": "feat-005",
+  "status": "passing",
+  "evidence": "curl /api/health -> 200 OK, typecheck: OK, pytest: 23 passed"
+}
+```
+
+The envelope must contain real output; this example is only a schema
+illustration.
+
 
 ## Auditable tracing
 
@@ -67,3 +94,13 @@ persists with its blocker text until the operator resolves it.
 If the work did not finish, the handoff is still produced — the feature goes
 to `blocked` with the exact cause, and the `Next Best Step` says exactly what
 to do.
+## PREVC, OpenCode, and Oh My Pi for evidence
+
+PREVC defines the evidence boundary as a common contract. OpenCode is the
+methodological and continuity adapter for artifacts and handoffs. Oh My Pi
+provides the native runtime engine; for example, `hub(op="start")` supervises
+processes, ports, and logs when the lane has that authorized capability.
+
+Live processes and Rung 5 are conditional on the task's acceptance criteria and
+plan. A tool's existence does not prove that a run occurred; the receipt needs
+real output and the corresponding verification.

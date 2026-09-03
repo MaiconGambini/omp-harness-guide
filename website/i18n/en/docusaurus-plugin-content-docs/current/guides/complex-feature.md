@@ -4,8 +4,10 @@ sidebar_position: 2
 
 # Complex Feature
 
-For multi-component tasks, frontend + backend, or with significant
-ambiguity.
+For medium- and high-risk architectural work with multiple components or
+significant ambiguity. PREVC remains the common contract; `/prevc prepare` and
+`/planner` in this guide are commands of the native OMP package.
+
 
 ## When to use the full pipeline
 
@@ -13,10 +15,15 @@ ambiguity.
 - Ambiguity in the requirements.
 - More than 3 files expected.
 
-## Example
+## Scenario: Invoice API with RLS and IDOR prevention
+
+
+### 1. Operator prompt
 
 **Prompt:** `Full-text search on products with filters by category and price,
 in the backend and frontend.`
+
+### 2. Plan phase
 
 **Flow:**
 
@@ -28,6 +35,8 @@ in the backend and frontend.`
      and `tickets/`.
    - The plan stops at `awaiting_plan_approval`.
 
+### 3. Execute phase
+
 3. `/harness-wip-control`
    - Decomposes into subtasks (feat-020 to feat-025).
    - Marks feat-020 as `in_progress`. Rest: `not_started`.
@@ -37,16 +46,24 @@ in the backend and frontend.`
    - Generator iterates over the subtasks.
    - Evaluator applies a rubric.
 
+### 4. Validate phase
+
 5. PREVC iterates: Execute -> Validate -> Judge -> Refine.
 
 6. Confirm after all subtasks pass.
+
+```text
+# Illustrative validation output; execution must capture real output.
+```
+
+### 5. Judge and handoff
 
 7. Handoff records the `passing` features with evidence and the files
    touched.
 
 **Time:** ~30-45 minutes.
 
-## The sprint contract
+**The sprint contract**
 
 For complex features, the sprint contract is filled in BEFORE Execute:
 

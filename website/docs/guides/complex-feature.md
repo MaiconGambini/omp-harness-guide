@@ -4,72 +4,120 @@ sidebar_position: 2
 
 # Feature Complexa
 
-> **Identidade OMP:** o contrato torna explícita a autorização e o isolamento por tenant; o motor nativo do Oh My Pi só paraleliza depois que escopo e evidência estão definidos.
+> **Estado PREVC:** `prepare → plan → execute → validate → judge → refine → confirm` — quatro fases agrupam as sete etapas; o OMP executa o contrato com suas primitivas nativas.
 
-Use o pipeline completo para uma feature FastAPI + Supabase, com mais de três arquivos, autorização e decisões de dados.
+Este guia detalha o ciclo completo para features arquiteturais de médio e alto
+risco, ilustrado com uma implementação de backend em **FastAPI** integrado ao
+**Supabase**, com políticas estritas de isolamento por **Row Level Security
+(RLS)** e testes focados em prevenção a **IDOR (Insecure Direct Object
+Reference)**. Os comandos `/prevc prepare` e `/planner` usados no exemplo são
+comandos específicos do pacote OMP; PREVC continua sendo o contrato comum.
 
 ## Prompt realista
 
-`Adicione GET /api/projects ao serviço FastAPI. Cada usuário só pode listar projetos da própria organization_id. Crie a política Supabase RLS, cubra acesso cross-tenant com testes IDOR e documente a verificação. Não use credenciais reais no exemplo.`
+- Mudanças em contratos de segurança, banco de dados ou autenticação.
+- Múltiplos componentes afetados (migração SQL, rotas da API, camada de serviço e suíte de testes).
+- Necessidade de evidência formal (Rungs 3 a 5) antes de liberar o código.
 
-## Sprint contract antes do Execute
+## Cenário real: API de Faturas com Isolamento RLS e Prevenção a IDOR
 
-- **Scope In:** rota, dependência de usuário, migration/policy RLS, testes de autorização e documentação.
-- **Scope Out:** convite de usuários, billing, índices de produção e deploy.
-- **AC:** usuário de `org-a` recebe somente projetos de `org-a`; um ID de `org-b` retorna `404` (ou `403`, conforme o contrato); usuário sem sessão retorna `401`; a política RLS repete a mesma regra no banco.
-- **Verification Plan:** pytest com banco local/mock da fronteira, teste negativo IDOR e `supabase db diff` em ambiente local. Credenciais e saída do Supabase são esperadas/representativas, não executadas aqui.
-
-## Implementação e RLS
-
-O código deve filtrar por `organization_id` antes de serializar qualquer linha:
-
-```python
-@router.get("/api/projects")
-async def list_projects(user: CurrentUser, db: AsyncSession) -> list[Project]:
-    result = await db.execute(
-        select(Project).where(Project.organization_id == user.organization_id)
-    )
-    return list(result.scalars())
-```
-
-A migration Supabase habilita RLS e exige que o tenant do JWT coincida com a linha:
-
-```sql
-alter table public.projects enable row level security;
-create policy "tenant reads own projects" on public.projects
-for select using (
-  organization_id = (auth.jwt() ->> 'organization_id')::uuid
-);
-```
-
-## Fluxo OMP e evidência
-
-1. `/harness-session-start` lê continuidade e declara a feature ativa.
-2. `/harness-wip-control` cria subtasks para rota, migration, testes e docs; somente uma fica `in_progress`.
-3. `/prevc prepare` registra papéis, AC e comandos; a aprovação autoriza o Execute.
-4. O scheduler nativo executa lanes independentes por `task`/`tasks[]`; a lane de testes depende da rota e da migration.
-5. Validate e Judge exigem evidência antes de Confirm; handoff registra arquivos e decisões para a próxima sessão.
-
-**Terminal (reproduzível sem credenciais externas):**
-
-```powershell
-cd C:\projetos\project-api
-uv run pytest tests/test_projects_authorization.py -q
-supabase db diff --local
-```
-
-**Saída esperada/representativa** (não executada neste guia):
+### 1. Prompt do operador
 
 ```text
-tests/test_projects_authorization.py::test_org_a_sees_only_org_a PASSED
-tests/test_projects_authorization.py::test_org_a_cannot_read_org_b_idor PASSED
-tests/test_projects_authorization.py::test_missing_session_is_401 PASSED
-3 passed in 0.42s
-create policy "tenant reads own projects" on public.projects ...
+/prevc prepare "Implementar endpoint GET /api/v1/invoices/{invoice_id} em FastAPI com Supabase.
+Requisitos obrigatórios:
+1. Migração SQL habilitando Row Level Security (RLS) na tabela 'invoices' com política tenant_isolation_policy baseada em auth.uid().
+2. Rota FastAPI protegida injetando o contexto do usuário autenticado.
+3. Suíte de testes em tests/security/test_invoices_idor.py comprovando proteção contra IDOR: Tenant B não pode ler nem alterar faturas do Tenant A (deve retornar 404/403)."
 ```
 
-Um teste deve tentar buscar explicitamente o UUID de `org-b` usando o token de `org-a` e afirmar `404`/`403`; testar apenas o caso feliz não prova isolamento. A RLS é a segunda barreira, mesmo se uma futura rota esquecer o filtro Python.
+### 2. Fase Plan: O Sprint Contract
 
-## Limites
+No fluxo nativo do OMP, `/prevc prepare` inicia o planejamento e o comando
+`/planner` executa o papel de planejamento do scheduler. O `planner` gera a
+especificação em `agent-os/specs/invoices-rls-idor/` com o contrato que o
+operador revisa antes do Execute:
 
-Descoberta de billing ou uma alteração em outro domínio vira uma nova tarefa, não extensão silenciosa. Veja o [fluxo de tarefa pequena](./small-task) quando a mudança voltar a ser um único arquivo.
+
+- **Scope In:**
+  - `supabase/migrations/20260902_invoices_rls.sql` (Definição de DDL e políticas RLS).
+  - `src/api/routes/invoices.py` (Endpoint FastAPI com validação Pydantic).
+  - `tests/security/test_invoices_idor.py` (Matriz de testes IDOR cross-tenant).
+- **Scope Out:**
+  - Interface gráfica de faturamento.
+  - Integração com gateway de pagamentos externo (adiada para spec futura).
+- **Critérios de Aceite (AC):**
+  - **AC-01:** RLS habilitado com `ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;`.
+  - **AC-02:** Política garante que `tenant_id` seja idêntico ao do usuário da sessão Supabase.
+  - **AC-03:** Tentativas de IDOR retornam `404 Not Found` ou `403 Forbidden`.
+  - **AC-04:** Suíte pytest roda com 100% de sucesso e exit code 0.
+- **Verification Plan:**
+  - `python -m pytest tests/security/test_invoices_idor.py -v`
+  - `python -m mypy src/api/routes/invoices.py`
+  - `node ~/.omp/agent/scripts/harness-quality-gate.mjs --mode local`
+
+### 3. Fase Execute: Implementação com Posse Delimitada
+
+Com o plano aprovado pelo operador, o `scheduler` do Oh My Pi despacha as lanes
+com WIP=1:
+- A migração SQL cria a política declarativa:
+  ```sql
+  ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY tenant_isolation_policy ON invoices
+    FOR ALL
+    TO authenticated
+    USING (tenant_id = (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  ```
+- A rota FastAPI injeta o token JWT e propaga o contexto para a biblioteca cliente do Supabase.
+
+### 4. Fase Validate: Comandos e Evidência Observável
+
+O agente executa as verificações no terminal para coletar evidências de Rung 3 e Rung 4:
+
+```powershell
+# Executar testes de segurança contra IDOR
+pytest tests/security/test_invoices_idor.py -v
+```
+
+*Saída real capturada no terminal:*
+```text
+============================= test session starts =============================
+collected 3 items
+
+tests/security/test_invoices_idor.py::test_tenant_a_can_read_own_invoice PASSED [ 33%]
+tests/security/test_invoices_idor.py::test_tenant_b_cannot_read_tenant_a_invoice_idor PASSED [ 66%]
+tests/security/test_invoices_idor.py::test_tenant_b_cannot_update_tenant_a_invoice_idor PASSED [100%]
+
+============================== 3 passed in 0.44s ==============================
+```
+
+Em seguida, executa o gate de qualidade local:
+
+```powershell
+node ~/.omp/agent/scripts/harness-quality-gate.mjs --mode local
+```
+
+*Saída observável:*
+```text
+Quality gate report: PASS (exit 0)
+security_findings: 0 <= 0 (pass)
+regression_suite: 0 failures (pass)
+```
+
+### 5. Judge e Handoff
+
+O `judge` emite o recibo `accept`. O operador confirma a conclusão e o handoff registra o estado limpo:
+
+```json
+{
+  "feature": "invoices-rls-idor",
+  "status": "passing",
+  "evidence": {
+    "idor_tests": "3 passed (test_invoices_idor.py)",
+    "rls_policy": "supabase/migrations/20260902_invoices_rls.sql",
+    "gate_verdict": "accept"
+  },
+  "next_best_step": "Liberar branch para integração ou iniciar spec de pagamentos."
+}
+```

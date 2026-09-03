@@ -6,7 +6,7 @@ sidebar_position: 3
 
 Files that the harness reads and writes during the lifecycle.
 
-## Installation (global)
+**Installation (global)**
 
 | Path | Purpose |
 |---|---|

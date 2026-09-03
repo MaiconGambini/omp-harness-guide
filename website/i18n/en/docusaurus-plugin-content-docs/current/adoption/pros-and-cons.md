@@ -59,11 +59,15 @@ the next session starts with wrong information.
 
 ### It does not replace good engineering
 
-The harness ensures traceability, not code quality. Bad code with pretty
-evidence is still bad code.
+The harness does not guarantee code quality; it structures traceability through
+evidence. Bad code remains bad code even when the evidence is complete.
 
 ### Initial curve
 
 The first session with the harness requires learning commands, concepts and
 the PREVC flow. The investment pays off on long projects, but can be
 excessive for single tasks.
+### Clean installation, no merge
+
+The public package is copied into a clean `~/.omp/agent` directory after a
+backup. It does not silently merge into an existing configuration.

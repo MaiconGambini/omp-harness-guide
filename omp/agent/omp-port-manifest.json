@@ -7,8 +7,8 @@
     "commands": 19,
     "scripts": 26,
     "configFiles": 1,
-    "extensions": 1,
-    "files": 261
+    "extensions": 2,
+    "files": 262
   },
   "files": [
     {
@@ -190,6 +190,10 @@
     {
       "path": "extensions/harness-omp-trace.ts",
       "sha256": "f0c95023776149b50a16923c08b8cbdd728d43e51b40d88310f7a349be173e10"
+    },
+    {
+      "path": "extensions/usage-report.ts",
+      "sha256": "f4c45c31dd059ca013f3b2a7b74795b74193b8784d5261be3827d4b94d218f8d"
     },
     {
       "path": "scripts/harness-benchmark.mjs",

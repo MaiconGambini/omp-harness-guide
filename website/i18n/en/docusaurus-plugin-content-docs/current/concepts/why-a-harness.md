@@ -14,7 +14,10 @@ Without a harness, Oh My Pi responds to a prompt but does not know what
 happened in the previous session, which task was left open, which command
 proves a change, or when it should stop.
 
-The Harness solves this with rules, durable state, verification, and handoff.
+PREVC addresses this as a common contract. OpenCode is the methodological and
+continuity adapter for durable conventions, artifacts, and handoffs; Oh My Pi
+is the native engine that supplies `task`, `tasks[]`, `hub`, `todo`, and
+runtime-extension capabilities.
 
 ## The problem it avoids
 
@@ -54,7 +57,8 @@ Before any significant change, the harness answers:
 - It does not make the agent autonomous.
 - It does not replace human review.
 - It does not provide an operating system sandbox.
-- It does not guarantee code quality — it guarantees traceability.
+- It does not guarantee code quality; it structures traceability through
+  evidence.
 
 ## Core principle
 

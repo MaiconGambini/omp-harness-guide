@@ -112,9 +112,9 @@ pentest, exploração, WSTG e chains de ataque ficam fora do pacote.
 | `to-spec` | Transformar uma ideia ou nota em uma spec |
 | `to-tickets` | Quebrar uma spec em tickets acionáveis |
 | `research` | Investigar um tema ou domínio antes de decidir |
-| `grill-me` | Ser questionado sem dó sobre um plano ou design até haver entendimento comum |
+| `grill-me` | Ser questionado com rigor sobre um plano ou design até haver entendimento comum |
 | `grill-with-docs` | Grilling apoiado na documentação existente (modo AUTO no pipeline de planos) |
-| `grilling` | Questionar sem dó o operador sobre um plano, decisão ou ideia |
+| `grilling` | Questionar com rigor o operador sobre um plano, decisão ou ideia |
 | `wayfinder` | Orientar-se em um codebase ou domínio desconhecido |
 | `domain-modeling` | Modelar o domínio antes de projetar a solução |
 | `codebase-design` | Projetar a estrutura do codebase |

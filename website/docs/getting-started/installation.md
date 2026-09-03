@@ -5,10 +5,15 @@ sidebar_position: 2
 # Instalação
 
 O Harness Oh My Pi é distribuído no diretório `omp/agent/` deste repositório.
-Essa árvore contém os arquivos reais que o Oh My Pi carrega em
+Essa árvore contém os arquivos que o Oh My Pi carrega em
 `~/.omp/agent`: agents, comandos, scripts, extensão, configuração e skills
-gerais. A instalação é limpa: não existe merge automático sobre uma
-configuração existente.
+gerais. Ela complementa uma instalação base do Oh My Pi; não instala o
+runtime do Oh My Pi nem substitui sua configuração.
+
+A instalação é limpa: não existe merge automático sobre uma configuração
+existente. O pacote público não anuncia uma release semântica; identifique o
+conteúdo instalado pela revisão Git aprovada e pelos hashes do manifesto.
+
 
 ## Passo 1: Fazer backup do diretório atual (se existir)
 
@@ -24,7 +29,7 @@ Use o backup como referência e copie o que quiser depois.
 
 ## Passo 2: Obter e revisar a distribuição
 
-Clone o repositório e revise a revisão do Git, o manifest do pacote e os
+Clone o repositório e revise a revisão do Git, o manifesto do pacote e os
 arquivos antes de instalar:
 
 ```powershell
@@ -34,8 +39,10 @@ Get-ChildItem .\omp\agent
 Get-Content .\omp\agent\omp-port-manifest.json
 ```
 
-`omp/agent/` é o pacote runtime. `website/` é somente o site da documentação;
-suas dependências não são necessárias para instalar o OMP.
+`omp/agent/` é o pacote runtime carregado pelo OMP. `website/` é somente o
+site da documentação; instalar suas dependências serve para desenvolver o
+site e não instala nada em `~/.omp/agent`.
+
 
 ## Passo 3: Validar o pacote público
 
@@ -77,16 +84,19 @@ publicado para inspeção e auditoria.
 
 ## Estrutura instalada
 
-Após a instalação, `~/.omp/agent` contém:
+Após a instalação, `~/.omp/agent` contém os diretórios e arquivos do manifesto:
 
-- `commands/` — 19 comandos do harness (`/prevc`, `/harness-*` e suporte).
-- `agents/` — 23 perfis de source agents, sem `security-analyst`.
-- `scripts/` — 26 utilitários Node portáveis.
-- `extensions/` — a extensão nativa `harness-omp-trace.ts`.
-- `skills/` — 107 skills gerais e defensivas, carregadas sob demanda.
-- `docs/` — o contexto global compartilhado (`docs/context.md`).
-- `config.yml` — configuração pública de agentes e papéis de modelo.
+- `commands/` — comandos do harness, incluindo `/prevc` e suporte.
+- `agents/` — perfis de agents permitidos pela distribuição.
+- `scripts/` — utilitários Node portáveis.
+- `extensions/` — extensões nativas carregadas pelo Oh My Pi.
+- `skills/` — skills gerais e defensivas, carregadas sob demanda.
+- `docs/` — contexto global compartilhado, quando incluído no manifesto.
+- `config.yml` — configuração pública de agents e papéis de modelo.
 - `omp-port-manifest.json` — inventário e hashes do pacote.
+
+Consulte o manifesto para a contagem e a revisão exatas do checkout. Não trate
+essas quantidades como uma versão ou como promessa de capacidade.
 
 Não fazem parte do pacote: skills `recon-*`, `redteam-*`, `hiagosh-*`,
 `wstg-*`, exploração, pentest, chains de ataque e estado privado local.

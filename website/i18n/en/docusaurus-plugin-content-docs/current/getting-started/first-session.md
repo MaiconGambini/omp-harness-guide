@@ -4,7 +4,11 @@ sidebar_position: 3
 
 # First Session
 
-This guide shows how to use the harness in a project for the first time.
+This guide shows how to use the harness in a project for the first time. It
+assumes a base Oh My Pi installation and the public `omp/agent/` package copied
+to `~/.omp/agent`; cloning `website/` installs only site dependencies and does
+not enable the runtime.
+
 
 ## 1. Audit the project
 
@@ -16,7 +20,7 @@ Inside Oh My Pi, run:
 
 This command inspects the project without modifying anything. It looks for:
 
-- Root instructions (`AGENTS.md`, `CLAUDE.md`).
+- Root instructions (`AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`).
 - Progress and feature state.
 - The startup and verification commands.
 - The evaluation/Judge layer, harness skills, security posture, context
@@ -59,13 +63,24 @@ Active task: feat-001 — Health endpoint. AC: curl /health returns 200.
 For meaningful work:
 
 ```text
-/prevc prepare <objective>
+/prevc prepare Add health check endpoint
 ```
 
-PREVC manages the lifecycle: it plans, reviews, executes, validates, judges,
-refines, and confirms. Each phase stays within the approved scope. The phase
-is durable — every transition is written by `harness-prevc-state.mjs` and
-survives between sessions.
+`/prevc prepare` starts **Prepare**, which groups `prepare` and `plan`. After
+explicit approval, use `/prevc run`: OMP enters **Execute**, dispatches
+independent lanes with `task` in `tasks[]`, and coordinates messages through
+`hub` when the plan allows it. **Validate** groups `validate` and `judge`;
+**Confirm** groups `refine` and `confirm`.
+
+The seven steps remain in this order:
+
+```text
+prepare → plan → execute → validate → judge → refine → confirm
+```
+
+The phase is durable: each transition is written by
+`harness-prevc-state.mjs` to the project's lifecycle file and survives across
+sessions.
 
 ## 5. End the session
 

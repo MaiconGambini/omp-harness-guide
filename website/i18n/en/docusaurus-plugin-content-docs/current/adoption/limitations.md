@@ -4,7 +4,11 @@ sidebar_position: 4
 
 # Limitations
 
-What Harness Oh My Pi does not do in the current version.
+What the documented Harness Oh My Pi distribution does not do — and what is an
+explicit gap rather than a capability. This repository does not use a public
+semantic version as its identifier; consult the Git revision and package
+manifest.
+
 
 ## It is not a SaaS product
 
@@ -35,14 +39,15 @@ The harness was designed and tested on Windows with PowerShell 5.1+. The
 install and migration commands are npm scripts; the Node runtime is
 portable, but shell scripts for other operating systems are not provided.
 
-## It does not prove application security
+## Explicit gaps
+
 
 The harness verifies its own lifecycle and evidence. It does **not** provide
 application authorization proof (RLS/IDOR) — that belongs to the application
 and its own tests. A project without a declared security contract gets a
 named `unavailable` gap, never a pass.
 
-## Missing capabilities are gaps, not features
+**Missing capabilities**
 
 Protocols and integration surfaces that are not implemented (for example,
 A2A/UCP/BCP-style agent interoperability) are labeled as gaps. Cost and

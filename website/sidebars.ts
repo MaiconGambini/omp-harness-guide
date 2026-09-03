@@ -3,11 +3,13 @@ import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   tutorialSidebar: [
     'intro',
+    'portfolio',
     {
       type: 'category',
       label: 'Primeiros Passos',
       link: { type: 'doc', id: 'getting-started/quickstart' },
       items: [
+        'getting-started/quickstart',
         'getting-started/prerequisites',
         'getting-started/installation',
         'getting-started/first-session',
@@ -18,6 +20,7 @@ const sidebars: SidebarsConfig = {
       label: 'Conceitos Essenciais',
       link: { type: 'doc', id: 'concepts/why-a-harness' },
       items: [
+        'concepts/why-a-harness',
         'concepts/seven-components',
         'concepts/prevc',
         'concepts/continual-harness',
@@ -52,6 +55,7 @@ const sidebars: SidebarsConfig = {
       label: 'Adoção & FAQ',
       link: { type: 'doc', id: 'adoption/use-cases' },
       items: [
+        'adoption/use-cases',
         'adoption/pros-and-cons',
         'adoption/security',
         'adoption/limitations',

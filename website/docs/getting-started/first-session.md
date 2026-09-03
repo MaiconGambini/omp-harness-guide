@@ -4,7 +4,11 @@ sidebar_position: 3
 
 # Primeira Sessão
 
-Este guia mostra como usar o harness em um projeto pela primeira vez.
+Este guia mostra como usar o harness em um projeto pela primeira vez. Ele
+pressupõe uma instalação base do Oh My Pi e a cópia do pacote público
+`omp/agent/` para `~/.omp/agent`; clonar `website/` instala somente as
+dependências do site e não habilita o runtime.
+
 
 ## 1. Auditar o projeto
 
@@ -56,7 +60,21 @@ Para trabalho significativo:
 /prevc prepare Adicionar endpoint de health check
 ```
 
-O PREVC gerencia o ciclo de vida: planeja, revisa, executa, valida, julga, refina e confirma. Cada fase mantém o escopo aprovado. A fase é durável — cada transição é gravada por `harness-prevc-state.mjs` no arquivo de fase durável do projeto e sobrevive entre sessões.
+`/prevc prepare` inicia a fase **Prepare**, que agrupa `prepare` e `plan`.
+Depois da aprovação explícita, use `/prevc run`: o OMP entra em **Execute**,
+despacha lanes independentes com `task` em `tasks[]` e coordena mensagens com
+`hub` quando o plano permitir. **Validate** agrupa `validate` e `judge`;
+**Confirm** agrupa `refine` e `confirm`.
+
+As sete etapas permanecem nesta ordem:
+
+```text
+prepare → plan → execute → validate → judge → refine → confirm
+```
+
+A fase é durável: cada transição é gravada por
+`harness-prevc-state.mjs` no arquivo de fase do projeto e sobrevive entre
+sessões.
 
 ## 5. Encerrar a sessão
 

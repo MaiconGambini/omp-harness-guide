@@ -4,9 +4,16 @@ sidebar_position: 3
 
 # Dispatch Paralelo
 
-> **Identidade OMP:** este é o caminho para fan-out nativo, sharding e velocidade; o [fluxo de feature complexa](./complex-feature) continua sendo a referência para contrato e continuidade.
+> **Estado PREVC:** `execute` — o scheduler despacha lanes aprovadas; a evidência da fronteira é o gate full sobre a árvore reconciliada.
+>
+> Este guia complementa [Harness Contínuo](../concepts/continual-harness). O
+> exemplo de dispatch abaixo é específico e experimental: mostra a forma do
+> fluxo nativo do OMP, não um benchmark nem uma receita para qualquer projeto.
 
-Use o dispatch quando um plano aprovado tem arquivos disjuntos e lanes independentes. Uma feature de um arquivo deve ficar no [fluxo de tarefa pequena](./small-task).
+Executa as tasks de um plano aprovado em **agents paralelos**, cada um com seu
+próprio papel e ownership, sob o controle do lifecycle PREVC. O `scheduler` é
+o despachador da fase Execute: recebe o plano aprovado, despacha as lanes
+independentes e reconcilia os resultados.
 
 ## Refactor FastAPI + Supabase
 
@@ -14,15 +21,108 @@ Use o dispatch quando um plano aprovado tem arquivos disjuntos e lanes independe
 
 Antes do fan-out, OMP registra a lane table:
 
-```text
-L1 authorization/projects.py             — dependência CurrentUser e filtro tenant
-L2 repositories/projects.py              — query organization_id, depende de L1
-L3 tests/test_projects_authorization.py  — testes cross-tenant, depende de L1+L2
+## Como funciona no Oh My Pi
+
+O Oh My Pi tem despacho paralelo **nativo** — não há launcher adicional:
+
+- O `scheduler` despacha lanes independentes em uma onda `tasks[]`.
+- Cada item de `tasks[]` nomeia um **source agent explícito** da lista de
+  perfis instalados em `~/.omp/agent/agents/`.
+- Resultados são entregues automaticamente; não existe stub de background nem
+  polling de status.
+- `hub` coordena mensagens entre agents.
+- Reviewers podem rodar concorrentes em uma onda, quando o plano separar seus
+  ownerships.
+- Suites de teste grandes podem ser shardadas entre agents `test-runner` por
+  arquivo, diretório ou tag, quando os shards forem independentes.
+- Cada lane roda o gate em `--mode local`; o gate full roda uma vez sobre a
+  árvore reconciliada.
+
+
+## A lane table
+
+Antes de despachar, o `scheduler` monta uma tabela de lanes. Cada lane declara ownership de arquivo — **uma lane write-capable por arquivo de cada vez**:
+
+```
+┌──────┬─────────────────────────┬──────────────────────────┬──────┬──────────────┐
+│ Lane │ Objetivo                │ Ownership (arquivos)     │ Dep  │ Capability   │
+├──────┼─────────────────────────┼──────────────────────────┼──────┼──────────────┤
+│ L1   │ Camada de autorização   │ authorization/, routes/  │ —    │ implementer  │
+│ L2   │ Camada de persistência  │ area_bindings/sql_*.py   │ —    │ implementer  │
+│ L3   │ Testes L1+L2            │ tests/...                │ L1,2 │ test-runner  │
+└──────┴─────────────────────────┴──────────────────────────┴──────┴──────────────┘
 ```
 
 Ownership é uma regra de prompt, não lock. Lanes que compartilham arquivo são serializadas. A policy Supabase fica fora das lanes porque não deve ser alterada pelo refactor.
 
-## Fan-out nativo
+## Exemplo específico e experimental: quatro módulos
+
+O exemplo abaixo usa quatro lanes independentes para ilustrar a forma da
+chamada `task` e o particionamento de testes. Os nomes de arquivos, agentes e
+shards são demonstrativos; substitua-os pelo ownership real do plano.
+
+### 1. Despacho concorrente via ferramenta `task`
+
+
+```json
+{
+  "context": "# Objetivo: Refatorar validação de esquemas em 4 domínios independentes sem tocar arquivos compartilhados.",
+  "tasks": [
+    { "name": "AuthShard", "agent": "implementer", "task": "Refatorar validação em src/auth/schemas.py e rodar pytest tests/test_auth.py." },
+    { "name": "BillingShard", "agent": "implementer", "task": "Refatorar validação em src/billing/schemas.py e rodar pytest tests/test_billing.py." },
+    { "name": "CatalogShard", "agent": "implementer", "task": "Refatorar validação em src/catalog/schemas.py e rodar pytest tests/test_catalog.py." },
+    { "name": "NotificationShard", "agent": "implementer", "task": "Refatorar validação em src/notifications/schemas.py e rodar pytest tests/test_notifications.py." }
+  ]
+}
+```
+
+Durante a execução, subagentes comunicam-se via `hub(op="send", to="AuthShard", message="...")` caso necessitem sincronizar tipos compartilhados, sem bloquear o thread principal.
+
+### 2. Rastro de evidência observável (formato ilustrativo)
+
+Cada lane deve retornar um envelope de conclusão com código de saída e tempo
+de execução. Os valores seguintes são fictícios e mostram apenas o formato:
+
+```text
+[AuthShard]         completed in <tempo> -> pytest tests/test_auth.py: <resultado> (exit 0)
+[BillingShard]      completed in <tempo> -> pytest tests/test_billing.py: <resultado> (exit 0)
+[CatalogShard]      completed in <tempo> -> pytest tests/test_catalog.py: <resultado> (exit 0)
+[NotificationShard] completed in <tempo> -> pytest tests/test_notifications.py: <resultado> (exit 0)
+Reconciliação da árvore: <quantidade> shards mesclados com <quantidade> conflitos de arquivo.
+Gate full sobre a árvore reconciliada: <resultado>.
+```
+
+O envelope precisa carregar saída real quando usado em uma execução; este
+trecho não fornece evidência de uma execução.
+
+
+### 3. Cálculo ilustrativo de wall-clock
+
+A fórmula abaixo explica como medir uma execução, mas os números são
+ilustrativos. Sem uma medição reproduzível do mesmo plano em modo sequencial e
+em dispatch OMP, não há claim de redução de tempo.
+
+| Métrica | Baseline sequencial ilustrativo | Dispatch OMP ilustrativo (4 lanes) |
+|---|---:|---:|
+| Shard 1 | 32,0 s | 31,4 s |
+| Shard 2 | 32,0 s | 32,0 s |
+| Shard 3 | 32,0 s | 29,8 s |
+| Shard 4 | 32,0 s | 30,5 s |
+| Overhead de coordenação | 0,0 s | 0,0 s |
+| **Wall-clock total** | **128,0 s** | **32,0 s** |
+
+```text
+Redução = (T_sequencial - T_paralelo) / T_sequencial
+        = (128,0s - 32,0s) / 128,0s
+        = 75,0%  # cálculo do exemplo, não resultado publicado
+```
+
+Na prática, meça o plano no ambiente de destino e registre o comando, a
+revisão, a configuração, o número de lanes, a saída e o custo de reconciliação
+antes de comparar execuções. A duração do shard mais lento pode limitar o
+wall-clock, mas isso não prediz o ganho de outro plano.
+
+## Autorização
 
 O scheduler do OMP usa `task` para despachar uma lane e `tasks[]` para uma onda de lanes independentes; `hub` coordena decisões e bloqueios entre agents:
 

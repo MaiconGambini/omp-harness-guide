@@ -7,6 +7,11 @@ sidebar_position: 4
 > **Estado PREVC:** `judge → refine → awaiting_confirmation → confirm` — o loop aprendido atua depois do Judge, sem escrever e sem votar.
 
 O harness contínuo transforma feedback de revisão em um sinal estruturado que pode orientar execuções futuras. Ele não promete que o agent "aprende sozinho": o loop é local ao projeto, medido pelos sinais configurados e limitado por permissões e confirmação humana.
+`continual-harness.md` é a referência do loop contínuo no pacote público do
+OMP. O dispatch paralelo mencionado neste documento é específico e
+experimental; só se aplica quando o plano declarar lanes independentes,
+ownership disjunto e evidência compatível.
+
 
 ## Loop de comportamento
 

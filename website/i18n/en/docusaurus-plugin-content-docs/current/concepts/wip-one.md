@@ -13,7 +13,14 @@ This page is about the execution discipline inside the lifecycle.
 WIP=1 means that only one unit of work can be active at a time.
 It is the core discipline of the harness.
 
-## Why WIP=1?
+## Cognitive restriction for language models
+The context window is a working-memory constraint: multiple simultaneous
+objectives increase the risk of mixed scope, missed checks, and unsupported
+completion claims. WIP=1 keeps one bounded unit active and makes its evidence
+and next action explicit.
+
+
+## Comparison: With vs. Without WIP=1
 
 | With WIP=1 | Without WIP=1 |
 |---|---|
@@ -55,6 +62,16 @@ During parallel dispatch, WIP=1 applies per lane: each lane has one owner per
 file and declared dependencies. Lanes touching the same file are not
 independent — serialize or merge them. The scheduler does not absorb scope
 changes; only approved scope executes.
+## OpenCode and Oh My Pi on WIP=1
+
+OpenCode is the continuity adapter: it organizes durable state and handoff
+between sessions. Oh My Pi is the native engine: `todo` maintains session
+WIP=1, while the scheduler can dispatch lanes through `tasks[]`.
+
+Use dispatch only when the plan declares independent lanes, non-overlapping
+files, and explicit dependencies. This reduces operational collisions but does
+not replace locks, worktrees, or result validation.
+
 
 ## Next step
 

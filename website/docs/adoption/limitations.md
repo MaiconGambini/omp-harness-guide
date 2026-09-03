@@ -4,7 +4,9 @@ sidebar_position: 4
 
 # Limitações
 
-O que o Harness Oh My Pi não faz na versão atual — e o que é lacuna explícita, não capacidade.
+O que a distribuição documentada do Harness Oh My Pi não faz — e o que é
+lacuna explícita, não capacidade. Este repositório não usa uma versão pública
+semântica como identificador; consulte a revisão Git e o manifesto do pacote.
 
 ## Não é um produto SaaS
 

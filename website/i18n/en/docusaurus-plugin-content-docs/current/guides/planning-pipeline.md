@@ -87,7 +87,7 @@ seams, typecheck and per-file tests, then code review.
 lanes into one local commit — so parallel lanes never race on git. One lane
 writes one file at a time.
 
-## Plan + execute in a single session
+**Plan + execute in a single session**
 
 The scheduler can plan **and** execute in the same session:
 

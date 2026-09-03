@@ -4,16 +4,35 @@ sidebar_position: 3
 
 # PREVC
 
-```text
-prepare → plan → execute → validate → judge → refine → confirm
-```
+PREVC is a common contract for significant work, independent of the runtime.
+It defines scope boundaries, allowed transitions, required evidence, and human
+confirmation; no agent can replace those decisions.
 
-This page is about the PREVC lifecycle — the core of the harness.
+## Four phases and seven steps
 
-PREVC is the lifecycle controller. Agents, skills, and extensions provide
-bounded capabilities; none of them decides on its own that the work is done.
+The seven contract steps are grouped into four phases:
 
-## Phases
+| Phase | Steps | Main boundary |
+|---|---|---|
+| **Prepare** | `prepare` + `plan` | Discover context, classify risk, and obtain plan approval. |
+| **Execute** | `execute` | Change only approved files and objectives. |
+| **Validate** | `validate` + `judge` | Run gates and receive an independent judgment. |
+| **Confirm** | `refine` + `confirm` | Review the improvement proposal and confirm as operator. |
+
+Grouping assigns responsibility at each boundary; the literal sequence remains
+`prepare → plan → execute → validate → judge → refine → confirm`.
+
+## Phase boundaries
+
+1. **Prepare:** the agent inspects the repository, measures risk, and proposes
+   a clear specification.
+2. **Execute:** after plan approval, it implements under WIP=1 and within
+   declared ownership.
+3. **Validate:** it runs real checks and submits the result to the read-only
+   Judge.
+4. **Confirm:** the operator reviews the evidence and authorizes completion.
+
+## Lifecycle diagram
 
 ```text
 OPERATOR MAKES A REQUEST
@@ -49,14 +68,30 @@ CONFIRM | REVISE | ABORT
 HANDOFF
 ```
 
+## PREVC in OpenCode and Oh My Pi
+
+OpenCode is the methodological and continuity adapter here: it organizes
+planning conventions, durable artifacts, and handoffs. Oh My Pi is the native
+engine and executes the same contract with runtime primitives.
+
+In OMP, the `scheduler` uses `task` to dispatch independent lanes in one
+`tasks[]` wave; `hub` coordinates messages; `todo` maintains session WIP=1; and
+`test-runner` may shard suites when the plan authorizes it and test files are
+disjoint. Native extensions observe runtime events, but do not transition PREVC
+or confirm work.
+
+These are execution capabilities, not evidence of speed. Use dispatch only when
+lanes have disjoint ownership and explicit dependencies.
+
 ## Durable lifecycle state
 
 The lifecycle phase is **durable**: every transition is written by
 `harness-prevc-state.mjs` to a project-local durable lifecycle file
-(`prevc.json`) and survives across sessions. The state script is the
+and survives across sessions. The state script is the
 persistent transition boundary:
 
 ```powershell
+# start in prepare
 node ~/.omp/agent/scripts/harness-prevc-state.mjs init --objective "<objective>" --spec agent-os/specs/<slug> --risk <low|medium|high|untrusted>
 
 # phase transitions

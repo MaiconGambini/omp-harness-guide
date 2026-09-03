@@ -4,43 +4,76 @@ sidebar_position: 1
 
 # Tarefa Pequena
 
-> **Identidade OMP:** o caminho rápido mantém a verificação, mas usa o motor nativo e a execução direta do Oh My Pi quando não há trabalho para agendar.
+> **Estado PREVC:** Fast path simplificado — até 3 arquivos, escopo determinístico, sem cerimônia pesada de spec.
 
-Este guia mostra uma correção de escopo óbvio, em um arquivo, que cabe em cerca de dois minutos.
+Este guia demonstra o fluxo rápido para tarefas pontuais de engenharia (como bugfixes cirúrgicos de 2 minutos), mantendo a integridade de evidências sem a sobrecarga de um planejamento cerimonial completo.
 
-## Quando usar o modo rápido
+## Por que o modo rápido dispensa a cerimônia do PREVC?
 
-Use quando o prompt tem uma sentença clara, um único arquivo e nenhuma decisão de design. O fast path bypassa a cerimônia completa do PREVC (spec, scheduler, lane table e handoff intermediário), não a responsabilidade de provar o resultado.
+O ciclo completo do PREVC foi projetado para mitigar riscos arquiteturais e coordenar mudanças complexas. Para uma correção de poucas linhas em um único arquivo:
 
-## Exemplo de dois minutos
+- Criar especificações completas (`spec.md`, `plan.md`, `verification.md`, `decisions.md`, tickets) gera mais overhead e tokens do que o próprio código modificado.
+- O risco de dispersão ou *context mixing* em uma alteração cirúrgica é baixo, desde que haja um teste reprodutor.
+- **A regra de ouro:** O fast path dispensa a burocracia documental, mas **nunca dispensa a evidência real**. A correção deve ser provada com teste automatizado (Rung 4) antes de ser concluída.
 
-**Prompt:** `Corrija o GET /api/health em app/main.py: ele deve retornar {"status":"ok"} e manter HTTP 200. Adicione uma verificação local.`
+## Cenário real: Correção de cálculo de desconto expirado
 
-Trecho existente em `app/main.py`:
+**Arquivo afetado:** `src/billing/discounts.py`
+**Problema:** Quando um cupom expirado é aplicado, a função `apply_discount` retorna valor de desconto negativo em vez de levantar `CouponExpiredError`.
 
-```python
-@app.get("/api/health")
-async def health() -> dict[str, str]:
-    return {"status": "healthy"}
-```
-
-**Terminal (comandos reproduzíveis em um projeto FastAPI):**
-
-```powershell
-cd C:\projetos\billing-api
-python -m pytest tests/test_health.py -q
-python -c "from pathlib import Path; p=Path('app/main.py'); s=p.read_text(); p.write_text(s.replace('healthy', 'ok'))"
-python -m pytest tests/test_health.py -q
-```
-
-**Evidência esperada/representativa** (os comandos acima não foram executados neste guia):
+### 1. Prompt do operador
 
 ```text
-tests/test_health.py::test_health_returns_ok PASSED
-1 passed in 0.18s
+Corrigir cálculo de desconto em src/billing/discounts.py: cupons expirados devem lançar CouponExpiredError em vez de retornar desconto negativo. Adicione teste de regressão em tests/test_discounts.py.
 ```
 
-No OMP, uma única mudança em `app/main.py` não se beneficia de `task`/`tasks[]` ou de sharding: o custo de coordenar agentes excederia o trabalho. Ainda assim, a segunda execução do teste e, quando aplicável, `curl http://127.0.0.1:8000/api/health` são a verificação obrigatória. Se a alteração revelar outro arquivo ou uma decisão de escopo, pare e mude para o [fluxo de feature complexa](./complex-feature).
+### 2. Comandos e execução no terminal
+
+O agente declara a tarefa ativa na ferramenta `todo` (WIP=1) e reproduz a falha antes de editar:
+
+```powershell
+# 1. Executar o teste reproduzindo a falha (vermelho)
+pytest tests/test_discounts.py -k test_expired_coupon -v
+```
+
+*Saída no terminal:*
+```text
+FAILED tests/test_discounts.py::test_expired_coupon - AssertionError: Expected CouponExpiredError but got discount -15.00
+1 failed, 12 passed in 0.28s
+```
+
+O agente edita cirurgicamente `src/billing/discounts.py` adicionando a checagem de validade temporal e executa a verificação:
+
+```powershell
+# 2. Re-executar teste para confirmar correção (verde)
+pytest tests/test_discounts.py -k test_expired_coupon -v
+
+# 3. Verificação de tipo determinística (Rung 3)
+python -m mypy src/billing/discounts.py
+```
+
+### 3. Saída de evidência observável
+
+```text
+tests/test_discounts.py::test_expired_coupon PASSED [100%]
+1 passed, 12 passed in 0.25s
+Success: no issues found in 1 source file
+```
+
+### 4. Handoff e encerramento
+
+O agente registra a conclusão na ferramenta `todo` e gera a evidência mínima no handoff:
+
+```json
+{
+  "task": "fix-coupon-expired-discount",
+  "status": "passing",
+  "files": ["src/billing/discounts.py", "tests/test_discounts.py"],
+  "evidence": "pytest: 1 passed; mypy: clean; exit code: 0"
+}
+```
+
+**Tempo total decorrido:** ~2 minutos.
 
 ## O que NÃO fazer
 

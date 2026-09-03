@@ -5,10 +5,15 @@ sidebar_position: 2
 # Installation
 
 Harness Oh My Pi is distributed under `omp/agent/` in this repository. This
-tree contains the real files Oh My Pi loads from `~/.omp/agent`: agents,
-commands, scripts, the extension, configuration, and general skills. The
-installation is clean; it never merges automatically into an existing
-configuration.
+tree contains the files Oh My Pi loads from `~/.omp/agent`: agents, commands,
+scripts, the extension, configuration, and general skills. It complements a
+base Oh My Pi installation; it does not install or replace the Oh My Pi
+runtime.
+
+Installation is clean; it never merges automatically into an existing
+configuration. The public package has no semantic release identifier; identify
+installed content by the reviewed Git revision and manifest hashes.
+
 
 ## Step 1: Back up the current directory (if any)
 
@@ -33,8 +38,10 @@ Get-ChildItem .\omp\agent
 Get-Content .\omp\agent\omp-port-manifest.json
 ```
 
-`omp/agent/` is the runtime package. `website/` is the documentation site
-only; its dependencies are not required to install OMP.
+`omp/agent/` is the runtime package loaded by OMP. `website/` is the
+documentation site only; installing its dependencies develops the site and
+does not install anything under `~/.omp/agent`.
+
 
 ## Step 3: Validate the public package
 
@@ -76,16 +83,20 @@ and audit.
 
 ## Installed structure
 
-After installation, `~/.omp/agent` contains:
+After installation, `~/.omp/agent` contains the directories and files listed
+by the manifest:
 
-- `commands/` — 19 harness commands (`/prevc`, `/harness-*`, and support).
-- `agents/` — 23 source-agent profiles, without `security-analyst`.
-- `scripts/` — 26 portable Node utilities.
-- `extensions/` — the native `harness-omp-trace.ts` extension.
-- `skills/` — 107 general and defensive skills, loaded on demand.
-- `docs/` — shared global context (`docs/context.md`).
+- `commands/` — harness commands, including `/prevc` and support.
+- `agents/` — agent profiles allowed by the distribution.
+- `scripts/` — portable Node utilities.
+- `extensions/` — native extensions loaded by Oh My Pi.
+- `skills/` — general and defensive skills, loaded on demand.
+- `docs/` — shared global context, when included by the manifest.
 - `config.yml` — public agent and model-role configuration.
 - `omp-port-manifest.json` — package inventory and hashes.
+
+Use the manifest for the exact checkout counts and revision. Do not treat those
+quantities as a version or a capability promise.
 
 The package does not include `recon-*`, `redteam-*`, `hiagosh-*`, `wstg-*`,
 exploitation, pentest, attack chains, or private local state.

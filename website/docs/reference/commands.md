@@ -4,7 +4,22 @@ sidebar_position: 1
 
 # Comandos
 
-Comandos globais disponíveis no Oh My Pi após a instalação do harness, instalados em `~/.omp/agent/commands/`. Cada comando executa uma skill global ou um script de diagnóstico. Os nomes começam com `/` quando invocados no chat do Oh My Pi (por exemplo, `/prevc`).
+Comandos globais disponíveis no Oh My Pi após a instalação do pacote público,
+instalados em `~/.omp/agent/commands/`. Há duas camadas:
+
+- **Comandos compartilhados pelo contrato:** `/prevc`, `/quality`, `/refine`,
+  `/harness-session-start` e `/harness-clean-handoff` expressam lifecycle,
+  qualidade, continuidade e confirmação independentemente do adaptador
+  metodológico.
+- **Comandos e superfícies nativas do OMP:** `/planner`, `/harness-status`,
+  `/score`, `/capabilities`, `/fallback`, `/trace`, `/harness-security-scan`,
+  `/harness-mcp-inventory` e `/harness-context-budget` usam o scheduler,
+  observabilidade ou coordenação do runtime Oh My Pi. Não há comandos públicos
+  `omp:*`.
+
+Os nomes começam com `/` quando invocados no chat do Oh My Pi (por exemplo,
+`/prevc`). A lista abaixo agrupa os comandos por função; a separação acima
+indica a camada a que cada comando pertence.
 
 ## Visão geral por família
 
@@ -13,21 +28,21 @@ Comandos globais disponíveis no Oh My Pi após a instalação do harness, insta
 | Comando | Quando usar | O que faz |
 |---|---|---|
 | `/prevc` | Qualquer trabalho significativo | Controla o ciclo de vida completo: prepare, plan, execute, validate, judge, refine, confirm e handoff. É o único escritor da fase durável do ciclo de vida (via `harness-prevc-state.mjs`) |
-| `/planner` | Planejar trabalho significativo | Pipeline size-gated: `wayfinder` para esforços grandes, `grill-with-docs` em AUTO e `to-tickets` para decompor; termina em `awaiting_plan_approval` |
-| `/harness-spec` | Feature média ou grande | Cria ou propõe uma spec Agent OS em `agent-os/specs/<slug>/` a partir dos templates globais |
-| `/propose-skill` | Processo recorrente no histórico | Analisa sequências repetidas de comandos e propõe uma skill gerada. A ativação (`--activate`) é manual, valida a candidata e instala somente após a ação explícita do operador; nunca há autoativação |
 | `/quality` | Antes de um commit (ou a qualquer momento) | Roda `harness-quality-gate.mjs --mode $ARGUMENTS` (padrão `local`; use `full` antes de commit) e `harness-risk-router.mjs`; imprime a tabela de métricas e o tier com a razão. Exit 1 = corrija a métrica, nunca relaxe o threshold; exit 2 = blocker do harness. Métrica indisponível ou relatório ausente/desatualizado = gap nomeado, não pass |
 | `/refine` | Depois do Judge, ou para registrar nota do operador com `--note` | Dispara o refiner read-only sobre a janela de findings e roteia propostas por blast radius; não escreve nada. Com `--note`, registra um finding `operator_note` |
-| `/trace` | Inspecionar o rastreio nativo | Verifica (`--verify`), lê (`--read`), poda (`--prune`) ou grava (`--record`) o envelope redigido de eventos `pi.on` |
 
-### Observabilidade e guardrails
+### Comandos nativos do OMP
 
 | Comando | Quando usar | O que faz |
 |---|---|---|
-| `/harness-status` | Verificar readiness | Imprime git, fase PREVC durável, handoff, orçamento de contexto, segurança e as superfícies observáveis (score, fallback, capabilities, red-team); cada superfície ausente vira `unavailable` nomeado |
-| `/score` | Ver a pontuação agregada | Mostra o agregado 0-10 derivado dos relatórios de gate mais recentes (derivado; nunca é entrada de gate) |
+| `/planner` | Planejar trabalho significativo no OMP | Pipeline size-gated do papel Planning do scheduler: `wayfinder` para esforços grandes, `grill-with-docs` em AUTO e `to-tickets` para decompor; termina em `awaiting_plan_approval` |
+| `/harness-spec` | Feature média ou grande no OMP | Cria ou propõe uma spec Agent OS em `agent-os/specs/<slug>/` a partir dos templates globais |
+| `/propose-skill` | Processo recorrente no histórico do OMP | Analisa sequências repetidas de comandos e propõe uma skill gerada. A ativação (`--activate`) é manual, valida a candidata e instala somente após a ação explícita do operador; nunca há autoativação |
+| `/trace` | Inspecionar o rastreio nativo do OMP | Verifica (`--verify`), lê (`--read`), poda (`--prune`) ou grava (`--record`) o envelope redigido de eventos `pi.on` |
+| `/harness-status` | Verificar readiness | Imprime git, fase PREVC durável, handoff, orçamento de contexto, segurança e as superfícies observáveis; cada superfície ausente vira `unavailable` nomeado |
+| `/score` | Ver a pontuação agregada | Mostra o agregado 0-10 derivado dos relatórios de gate mais recentes; nunca é entrada de gate |
 | `/capabilities` | Conferir fatos de capacidade | Resume os fatos multimodais por papel de modelo a partir do probe de capacidades |
-| `/fallback` | Conferir eventos de fallback | Resume o log de eventos de fallback de provedor (contagem + último evento) |
+| `/fallback` | Conferir eventos de fallback | Resume o log de eventos de fallback de provedor |
 | `/harness-security-scan` | Auditar superfície de segurança | Escaneia o harness e o projeto buscando riscos de supply-chain e secrets; resume PASS/WARN/FAIL sem imprimir valores |
 | `/harness-mcp-inventory` | Inventariar MCPs | Lista servidores MCP, detecta drift e sinaliza chaves com secret sem expor valores |
 | `/harness-context-budget` | Auditar carga de contexto | Reporta o orçamento de contexto de skills, comandos e MCPs; recomenda lazy-loading |
@@ -45,9 +60,10 @@ Comandos globais disponíveis no Oh My Pi após a instalação do harness, insta
 
 ## Validar e instalar o pacote público
 
-O pacote real está em `omp/agent/`; não há scripts npm `omp:*` nem um
-exportador público. No checkout revisado, rode o validator e então copie a
-árvore para uma instalação limpa:
+O pacote real está em `omp/agent/`; não há scripts npm `omp:*` nem exportador
+público. A distribuição não anuncia release semântica: use uma revisão Git
+revisada e o manifesto com hashes para identificar o conteúdo. No checkout,
+rode o validator e então copie a árvore para uma instalação limpa:
 
 ```powershell
 node scripts/validate-public-subset.mjs --check-manifest
@@ -163,7 +179,7 @@ node ~/.omp/agent/scripts/harness-briefing.mjs
 - Roda o gate medido (`--mode local` por padrão; `--mode full` antes de commit) e o risk router.
 - Ambos leem `agent-os/quality-thresholds.json` do projeto.
 - Exit 1 = corrija a métrica; exit 2 = blocker do harness; métrica `unavailable` = gap nomeado, nunca pass.
-- Para suites grandes, sharde os testes entre agents `test-runner` paralelos antes de ler cobertura.
+- Para suites grandes, faça sharding entre agents `test-runner` paralelos antes de ler cobertura.
 
 ### 8. Refine — `/refine`
 

@@ -16,7 +16,11 @@ Use it when the prompt has:
 
 ## Example
 
+### 1. Operator prompt
+
 **Prompt:** `Add a GET /api/health endpoint`
+
+### 2. Commands and terminal execution
 
 **Flow:**
 
@@ -40,7 +44,17 @@ Use it when the prompt has:
 
 7. Handoff — `/harness-clean-handoff` records the completion.
 
+```text
+# Reproduce the failure with the focused test
+# Re-run the regression test after the fix
+# Run deterministic type checking
+```
+
+### 3. Observable evidence output
+
 **Time:** ~2-5 minutes.
+
+### 4. Handoff and close
 
 ## What NOT to do
 

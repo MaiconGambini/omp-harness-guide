@@ -48,7 +48,7 @@ Os arquivos de estado precisam ser mantidos atualizados. Se o `progress.md` fica
 
 ### Não substitui boa engenharia
 
-O harness garante rastreabilidade, não qualidade de código. Um código ruim com evidências bonitas continua sendo código ruim.
+O harness não garante qualidade de código; estrutura a rastreabilidade por meio de evidências. Um código ruim continua sendo código ruim mesmo quando as evidências são completas.
 
 ### Curva inicial
 

@@ -17,10 +17,13 @@ validate-report.txt
 *.pem
 *.key
 *.secret
+*.p12
+*.pfx
 *.local.json
 *.local.jsonc
 
 # Private harness runtime/evidence must never be staged in this public repo.
+.maestri/
 docs/harness/
 codex/
 omp/port-manifest.json
