@@ -127,6 +127,18 @@ Measure the same plan in the target environment before comparing runs.
 - **Autonomous mode:** an instruction to execute a named plan or spec end to
   end is the authorization and stops once at `awaiting_confirmation`.
 
+## Evidence and continuity
+
+The execution handoff records the plan, lane ownership, decisions, commands,
+outputs, exit codes, reconciliation result, and next step. OMP auto-delivers
+lane results and records the same trail without manual polling.
+
+## Measurement, not promise
+
+The wall-clock formula above explains how to measure a run; it is not a
+performance guarantee. Repeat the comparison in the target project, record the
+environment and tree revision, and attach the evidence to the handoff.
+
 ## Known limits
 
 - File ownership is a prompt rule, not a lock. For real isolation between

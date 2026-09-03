@@ -46,7 +46,7 @@ Antes de uma mudança importante, o harness responde:
 - Não torna o agente autônomo.
 - Não substitui revisão humana.
 - Não fornece sandbox de sistema operacional.
-- Não garante qualidade de código; garante rastreabilidade.
+- Não torna a qualidade automática; exige evidência verificável e estado persistido.
 
 ## Princípio fundamental
 
