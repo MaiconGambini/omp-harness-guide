@@ -4,61 +4,59 @@ sidebar_position: 6
 
 # Evidência e Handoff
 
-> **Estado PREVC:** `validate → judge → confirm` — conclusão exige evidência real; confirmação exige o operador e um handoff.
+Uma conclusão confiável não é uma frase como "funcionou na minha máquina". É uma sequência de provas que sobe da afirmação até o comportamento observado em um sistema rodando. O handoff transforma essa prova em contexto consumível pela próxima sessão.
 
-O harness exige que toda conclusão tenha evidência — não basta "funcionou na minha máquina".
+## Os cinco degraus da evidência
 
-## Camadas de verificação
+Os degraus são cumulativos e estão ordenados do mais fraco ao mais forte:
 
-Antes de declarar uma feature como concluída, três camadas são verificadas:
+1. **Rung 1 — Assertion (afirmação):** o agente declara que terminou ou que algo deveria funcionar. A prova esperada é apenas o texto da afirmação. Serve como intenção, mas não demonstra execução.
+2. **Rung 2 — Artifact (artefato):** arquivos, diff ou estado persistido mostram o que mudou. A prova esperada é o caminho dos arquivos e o conteúdo revisável. Demonstra mudança, não comportamento.
+3. **Rung 3 — Command output (saída de comando):** um comando de verificação foi executado e sua saída e código de saída foram registrados. A prova esperada identifica comando, diretório, resultado e falhas. Demonstra uma checagem reproduzível.
+4. **Rung 4 — Acceptance (aceite observável):** cada critério de aceite é ligado a um resultado observado, com revisão ou gate apropriado ao risco. A prova esperada é uma tabela ou registro critério → evidência, incluindo o que ficou bloqueado.
+5. **Rung 5 — Live running verification (verificação ao vivo):** o sistema real é iniciado e o caminho alterado é exercitado. A prova esperada inclui comando de inicialização, ação ou requisição, resposta observada, logs relevantes e código de saída. Este é o degrau mais forte.
 
-1. **Static** — typecheck e lint passam.
-2. **Runtime** — os critérios de aceite do contrato são observáveis; comandos foram rodados e o output foi registrado.
-3. **System** — o comando de verificação do projeto sai com código 0, e `feature_list.json` e o arquivo de progresso refletem o novo estado.
+Não promova uma conclusão para um degrau sem a prova correspondente. Um Rung 1 não substitui um Rung 5, e uma saída de teste não prova por si só que o fluxo ao vivo foi exercitado.
 
-## O envelope de evidência da lane
+## Envelope filho da lane
 
-Cada lane devolve um envelope terminal pequeno e estruturado:
-
-- status (`completed | blocked | needs_input`);
-- arquivos realmente escritos;
-- evidência (saída real de comando, não descrição);
-- tentativas que falharam;
-- decisão, blocker e próximo passo.
-
-## Exemplo de evidência
+Cada lane retorna ao pai um envelope curto com exatamente quatro chaves:
 
 ```json
 {
-  "id": "feat-005",
-  "status": "passing",
-  "evidence": "curl /api/health -> 200 OK, typecheck: OK, pytest: 23 passed"
+  "status": "ok",
+  "summary": "resultado conciso da lane",
+  "artifact": "local://evidencia-completa",
+  "failures": []
 }
 ```
 
-A evidência contém output real, não uma descrição do que deveria acontecer.
+`status` aceita `ok` ou `error`; `artifact` e `failures` são opcionais. O
+envelope filho não inclui `files`, `verification`, `blocker` nem `next_step`.
+Esses dados pertencem ao scheduler e ao registro da sessão pai, que
+reconcilia arquivos, verificações, bloqueios e a próxima ação. O envelope
+filho deve apontar logs longos para `local://` ou `artifact://`.
 
-## Rastreio auditável
+## Handoff para a próxima sessão
 
-O rastreio nativo (`harness-omp-trace.ts`) grava o spine de runtime — sessões, runs, tools e modelos — em um envelope redigido. Ele consome apenas eventos do barramento de extensões (`pi.on`): `session_start`, `session_switch`, `agent_start`, `tool_execution_start`, `tool_execution_end`, `agent_end`, `session_shutdown`. Registros de ferramenta carregam apenas o nome e o id da chamada — nunca os corpos de entrada/saída.
+Use esta estrutura, mesmo quando o trabalho está bloqueado:
 
-O stream só é evidência de auditoria depois que a verificação passa:
-
-```powershell
-node ~/.omp/agent/scripts/harness-trace.mjs --verify --root .
+```text
+Verified now: resultado concluído e maior rung alcançado
+Changed: arquivos modificados e contrato afetado
+Evidence: comandos, saídas, códigos de saída e links para artefatos
+Broken: falhas reproduzíveis ou "none"
+Decisions: escolhas que a próxima sessão deve preservar
+Next best step: uma única ação, com pré-condição se houver
 ```
 
-Quebras de cadeia de hash ou linhas ilegíveis falham fechado (exit 2) e recusam novas gravações até o reparo.
+O próximo agente deve conseguir retomar sem reconstruir decisões pela memória da conversa. Se nada foi concluído, registre `blocked`, a causa exata e a ação exata que destrava o trabalho. O handoff não transforma uma afirmação em prova.
 
-## Handoff
 
-Toda sessão termina com `/harness-clean-handoff`. Ele preenche:
+## Identidade e continuidade
 
-- **Verified Now** — o que foi concluído nesta sessão.
-- **Changed** — arquivos modificados.
-- **Broken** — o que quebrou (se algo quebrou).
-- **Next Best Step** — a única próxima ação.
+O **OpenCode** fornece a metodologia e a referência para interpretar esses degraus, além da continuidade entre sessões. O **Oh My Pi** fornece o motor nativo de **32 subagentes**, fan-out paralelo e sharding para coletar provas de lanes independentes. O caminho OMP é relevante quando a verificação pode ser dividida sem compartilhar arquivos ou contexto; a evidência de cada lane continua separada e deve ser reconciliada.
 
-Se o trabalho não terminou, o handoff ainda é feito — a feature vai para `blocked` com a causa exata e o `Next Best Step` diz exatamente o que fazer.
+## Próximo passo
 
-A conclusão do ciclo exige também um handoff presente: a transição `awaiting_confirmation → complete` só acontece com confirmação do operador **e** um `docs/harness/session-handoff.md` existente.
+Veja [PREVC](./prevc) para o ciclo de entrega ou [Continual Harness](./continual-harness) para continuidade e melhoria.

@@ -3,68 +3,42 @@ sidebar_position: 1
 slug: intro
 ---
 
-# Introdução
+# Introdução ao Harness Oh My Pi
 
-O Harness Oh My Pi transforma o Oh My Pi de um agente que "redescobre tudo a cada sessão" em um agente que mantém estado, respeita WIP=1, produz evidência e faz handoff limpo entre sessões.
+Sem orientação, um agente de IA pode transformar uma alteração pequena em uma avalanche de arquivos: muda dezenas de arquivos sem avisar, quebra o build, afirma que executou testes que nunca rodaram e perde todo o contexto quando a sessão termina. O resultado é retrabalho, incerteza e uma nova sessão tentando descobrir o que aconteceu.
 
-O harness é um port do harness OpenCode para os primitivos nativos do Oh My Pi: despacho paralelo com `task` em uma onda `tasks[]`, coordenação com `hub`, a ferramenta `todo` (WIP=1) e o barramento de eventos de extensão (`pi.on`). O ciclo de vida **PREVC** permanece o mesmo contrato runtime-neutral; o que muda é o adaptador.
+O **Harness Oh My Pi** é o **motor de execução de alta performance** para aplicar engenharia disciplinada com velocidade. Ele combina o ciclo PREVC com despacho nativo de até 32 subagentes, sharding paralelo de testes e estado durável em arquivo que sobrevive entre sessões.
 
-## O ciclo de vida
+## Comparativo direto
 
-Trabalho significativo passa por uma sequência fixa de fases, cada uma com a evidência que precisa produzir antes de avançar:
+| Preocupação | Unassisted AI chat | Harness-guided engineering |
+|---|---|---|
+| Alterações fora de escopo | O agente pode editar muitos arquivos sem planejamento ou aviso | Cada lane declara a propriedade dos arquivos e seus limites |
+| Build quebrado | A mudança termina sem uma validação obrigatória | Gates medidos verificam o resultado antes da aceitação |
+| Testes alegados | O modelo pode dizer que testou sem evidência de execução | Comandos e resultados registrados sustentam cada afirmação |
+| Contexto perdido | A próxima sessão recomeça com amnésia do trabalho anterior | Estado durável, WIP=1 e handoff preservam a continuidade |
+| Velocidade | Trabalho serial disputa um único contexto | Até 32 subagentes nativos e sharding permitem fan-out controlado |
+
+## O ciclo de vida PREVC
+
+Trabalhos significativos seguem um fluxo determinístico. Cada etapa produz evidências verificáveis antes do avanço:
 
 ```text
 prepare → plan → execute → validate → judge → refine → confirm
 ```
 
-- **prepare** — descobre contexto e classifica risco.
-- **plan** — define objetivo, escopo, não-escopo e critérios de aceite.
-- **execute** — executa somente o escopo aprovado, WIP=1.
-- **validate** — mede o resultado com gates e evidência real.
-- **judge** — um avaliador read-only compara o trabalho com o contrato.
-- **refine** — um refiner read-only propõe melhorias; não escreve e não vota.
-- **confirm** — o operador revisa a evidência e confirma; nenhum agente se autoconfirma.
+- prepare — mapeia contexto, restrições e classe de risco.
+- plan — define objetivo, fronteiras de arquivos, critérios de aceite e lanes.
+- execute — despacha lanes aprovadas em paralelo com isolamento de contexto.
+- validate — executa gates medidos e testes sobre a árvore reconciliada.
+- judge — compara o resultado com o contrato inicial de forma independente.
+- refine — analisa a trajetória sem poder de aprovação.
+- confirm — o operador humano valida a entrega; nenhum agente se autoaprova.
 
-## O que você vai encontrar
+## Os cinco pilares da documentação
 
-| Seção | O que cobre |
-|---|---|
-| **[Começando](./getting-started/installation)** | Instalação passo a passo e primeira sessão. |
-| **[Conceitos](./concepts/why-a-harness)** | PREVC, WIP=1, evidências, os sete componentes e os limites de automação. |
-| **[Guias](./guides/small-task)** | Fluxo completo para tarefas pequenas e complexas. |
-| **[Referência](./reference/commands)** | Comandos, agents/skills e artefatos. |
-| **[Adoção](./adoption/use-cases)** | Casos de uso, prós e contras, segurança e limitações. |
-| **[FAQ](./troubleshooting/faq)** | Problemas comuns e soluções. |
-
-## Pré-requisitos
-
-- Windows com PowerShell 5.1+
-- Oh My Pi instalado e funcionando
-- Node.js 20+
-- Git
-
-## Instalação rápida
-
-> **Instalação limpa:** se `~/.omp/agent` já existe com arquivos seus, faça backup antes de instalar — não há merge automático. O [guia completo de instalação](./getting-started/installation) mostra o comando exato.
-
-A distribuição real do Harness Oh My Pi fica em `omp/agent/`. Ela contém os
-agents, comandos, scripts, extensão, configuração e skills gerais que o Oh My
-Pi carrega diretamente. O pacote público não inclui runtime local, estados,
-evidências, recon, exploração, WSTG ou playbooks ofensivos.
-
-Depois de revisar `omp/agent/omp-port-manifest.json`, instale em uma pasta limpa:
-
-```powershell
-$target = Join-Path $env:USERPROFILE ".omp\agent"
-New-Item -ItemType Directory -Force $target | Out-Null
-Copy-Item -Path "omp/agent/*" -Destination $target -Recurse -Force
-```
-
-O `website/` é somente o site da documentação; suas dependências não fazem
-parte do runtime OMP.
-
-[Guia completo de instalação &rarr;](./getting-started/installation)
-
-## O princípio
-
-O harness não tenta substituir o operador. Ele torna claro o que foi solicitado, o que foi aprovado, o que foi executado, o que foi verificado e qual é a próxima ação segura. Todo o resto desta documentação é detalhe desse princípio.
+1. **[Primeiros passos](./getting-started/installation)** — instalação e o guia de cinco minutos.
+2. **[Conceitos essenciais](./concepts/why-a-harness)** — PREVC, WIP=1 e evidências.
+3. **[Guias práticos](./guides/small-task)** — tarefas reais e despacho paralelo.
+4. **[Referência completa](./reference/commands)** — comandos, agentes e arquivos.
+5. **[Adoção e FAQ](./adoption/use-cases)** — casos de uso, segurança e limitações.

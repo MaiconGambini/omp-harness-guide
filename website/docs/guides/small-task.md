@@ -4,47 +4,45 @@ sidebar_position: 1
 
 # Tarefa Pequena
 
-> **Estado PREVC:** `prepare → execute → validate → confirm` — até 3 arquivos, sem scheduler nem cerimônia de spec.
+> **Identidade OMP:** o caminho rápido mantém a verificação, mas usa o motor nativo e a execução direta do Oh My Pi quando não há trabalho para agendar.
 
-Este guia mostra o fluxo para tarefas de escopo óbvio e até 3 arquivos.
+Este guia mostra uma correção de escopo óbvio, em um arquivo, que cabe em cerca de dois minutos.
 
 ## Quando usar o modo rápido
 
-Use quando o prompt tem:
+Use quando o prompt tem uma sentença clara, um único arquivo e nenhuma decisão de design. O fast path bypassa a cerimônia completa do PREVC (spec, scheduler, lane table e handoff intermediário), não a responsabilidade de provar o resultado.
 
-- Uma sentença clara.
-- Escopo óbvio (1-3 arquivos).
-- Nenhuma ambiguidade de design.
+## Exemplo de dois minutos
 
-## Exemplo
+**Prompt:** `Corrija o GET /api/health em app/main.py: ele deve retornar {"status":"ok"} e manter HTTP 200. Adicione uma verificação local.`
 
-**Prompt:** `Adiciona um endpoint GET /api/health`
+Trecho existente em `app/main.py`:
 
-**Fluxo:**
+```python
+@app.get("/api/health")
+async def health() -> dict[str, str]:
+    return {"status": "healthy"}
+```
 
-1. `/harness-session-start` — lê o estado atual, declara a task ativa.
+**Terminal (comandos reproduzíveis em um projeto FastAPI):**
 
-2. `/prevc prepare Adiciona um endpoint GET /api/health`
-   - Plan: escopo (1 arquivo), AC (`curl retorna 200`), non-goals.
-   - Operator approval: "sim".
+```powershell
+cd C:\projetos\billing-api
+python -m pytest tests/test_health.py -q
+python -c "from pathlib import Path; p=Path('app/main.py'); s=p.read_text(); p.write_text(s.replace('healthy', 'ok'))"
+python -m pytest tests/test_health.py -q
+```
 
-3. Execute — cria o arquivo com o endpoint.
+**Evidência esperada/representativa** (os comandos acima não foram executados neste guia):
 
-4. Validate:
-   - Typecheck: OK.
-   - Testes da área: OK.
-   - Curl /api/health: retorna o payload esperado.
-   - Gate local (`/quality`): OK.
+```text
+tests/test_health.py::test_health_returns_ok PASSED
+1 passed in 0.18s
+```
 
-5. Judge — recibo `accept`.
-
-6. Confirm — feature vai para `passing` com evidência.
-
-7. Handoff — `/harness-clean-handoff` registra a conclusão.
-
-**Tempo:** ~2-5 minutos.
+No OMP, uma única mudança em `app/main.py` não se beneficia de `task`/`tasks[]` ou de sharding: o custo de coordenar agentes excederia o trabalho. Ainda assim, a segunda execução do teste e, quando aplicável, `curl http://127.0.0.1:8000/api/health` são a verificação obrigatória. Se a alteração revelar outro arquivo ou uma decisão de escopo, pare e mude para o [fluxo de feature complexa](./complex-feature).
 
 ## O que NÃO fazer
 
-- Não pular a verificação. Mesmo uma tarefa de 2 minutos precisa de evidência.
-- Não expandir o escopo. Se perceber que precisa de mais, pare, planeje de novo e peça aprovação.
+- Não declarar sucesso sem saída observável.
+- Não expandir o escopo para autenticação, banco ou deploy.

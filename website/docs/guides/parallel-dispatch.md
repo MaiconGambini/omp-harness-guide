@@ -4,53 +4,68 @@ sidebar_position: 3
 
 # Dispatch Paralelo
 
-> **Estado PREVC:** `execute` — o scheduler despacha lanes aprovadas; a evidência da fronteira é o gate full sobre a árvore reconciliada.
+> **Identidade OMP:** este é o caminho para fan-out nativo, sharding e velocidade; o [fluxo de feature complexa](./complex-feature) continua sendo a referência para contrato e continuidade.
 
-Executa as tasks de um plano em **subagents paralelos**, cada um com seu próprio papel, sob o controle de lifecycle do PREVC. O `scheduler` é o despachador da fase Execute: recebe o plano aprovado, despacha as lanes independentes ao mesmo tempo e reconcilia os resultados.
+Use o dispatch quando um plano aprovado tem arquivos disjuntos e lanes independentes. Uma feature de um arquivo deve ficar no [fluxo de tarefa pequena](./small-task).
 
-## Quando usar
+## Refactor FastAPI + Supabase
 
-- Plano com **lanes independentes** — arquivos disjuntos, sem dependência sequencial entre elas.
-- Trabalho multi-componente onde partes distintas podem avançar juntas (ex: camada de autorização em paralelo com a de persistência).
+**Prompt:** `Refatore o serviço de projetos: L1 move a autorização FastAPI para authorization/projects.py, L2 move a repository query para repositories/projects.py e L3 atualiza testes IDOR em tests/test_projects_authorization.py. Preserve a política RLS e não toque nos arquivos das outras lanes. Execute o plano até o handoff, com evidência.`
 
-**Quando NÃO usar:** plano WIP=1 estritamente serial, lanes que tocam o mesmo arquivo, ou feature de 1 arquivo. Nesses casos o overhead do scheduler não compensa — use o [fluxo de feature complexa](./complex-feature) ou de [tarefa pequena](./small-task).
+Antes do fan-out, OMP registra a lane table:
 
-## Como funciona no Oh My Pi
-
-O Oh My Pi tem despacho paralelo **nativo** — nada a lançar:
-
-- O `scheduler` despacha lanes independentes em **uma onda** `tasks[]` (até dezenas de subagents verdadeiramente concorrentes).
-- Cada item de `tasks[]` nomeia um **source agent explícito** da lista de perfis instalados em `~/.omp/agent/agents/` — nunca perfis embutidos do runtime.
-- Resultados são **entregues automaticamente**; não existe stub de background nem polling de status.
-- `hub` coordena mensagens entre agents.
-- Reviewers rodam concorrentes em uma onda (`code-reviewer` + `architecture-reviewer`).
-- Suites de teste grandes são **sharded** entre agents `test-runner` (por arquivo/diretório/tag) e reconciliadas — nunca rode uma suite grande serialmente no agent principal.
-- Cada lane roda o gate em `--mode local`; o gate full roda **uma vez** sobre a árvore reconciliada.
-
-## A lane table
-
-Antes de despachar, o `scheduler` monta uma tabela de lanes. Cada lane declara ownership de arquivo — **uma lane write-capable por arquivo de cada vez**:
-
-```
-┌──────┬─────────────────────────┬──────────────────────────┬──────┬──────────────┐
-│ Lane │ Objetivo                │ Ownership (arquivos)     │ Dep  │ Capability   │
-├──────┼─────────────────────────┼──────────────────────────┼──────┼──────────────┤
-│ L1   │ Camada de autorização   │ authorization/, routes/  │ —    │ implementer  │
-│ L2   │ Camada de persistência  │ area_bindings/sql_*.py   │ —    │ implementer  │
-│ L3   │ Testes L1+L2            │ tests/...                │ L1,2 │ test-runner  │
-└──────┴─────────────────────────┴──────────────────────────┴──────┴──────────────┘
+```text
+L1 authorization/projects.py             — dependência CurrentUser e filtro tenant
+L2 repositories/projects.py              — query organization_id, depende de L1
+L3 tests/test_projects_authorization.py  — testes cross-tenant, depende de L1+L2
 ```
 
-Ownership que se cruza = lanes **não** independentes → serializa ou funde numa lane só. É regra de prompt, não lock: duas lanes no mesmo arquivo sobrescrevem uma à outra em silêncio.
+Ownership é uma regra de prompt, não lock. Lanes que compartilham arquivo são serializadas. A policy Supabase fica fora das lanes porque não deve ser alterada pelo refactor.
 
-## Autorização
+## Fan-out nativo
 
-- **Modo manual:** `/prevc prepare <objetivo>` para em `awaiting_plan_approval`; após aprovar, `/prevc run` autoriza o Execute.
-- **Modo autônomo:** uma instrução para executar um plano/spec **nomeado** de ponta a ponta **é** a autorização. O run executa tudo, para **uma vez só** no `awaiting_confirmation` do spec inteiro, e interrompe no meio apenas por um bloqueio real: task que exige operador/live, mudança de escopo, push/deploy, ou falha de validação irrecuperável.
+O scheduler do OMP usa `task` para despachar uma lane e `tasks[]` para uma onda de lanes independentes; `hub` coordena decisões e bloqueios entre agents:
 
-## Limites conhecidos
+```text
+tasks[] = [
+  {agent: "implementer", task: "L1", owns: ["authorization/projects.py"]},
+  {agent: "implementer", task: "L2", owns: ["repositories/projects.py"]}
+]
+hub.send("L1", "publique o contrato CurrentUser antes de L2 começar")
+```
 
-- A paralelização real depende do mecanismo nativo `task` do runtime; sem ele o dispatch seria serial.
-- Ownership de arquivo é regra de prompt, não lock — para isolamento real entre lanes que colidem, use worktrees (veja [Portabilidade](./portability)).
-- Dois schedulers no mesmo projeto disputam os mesmos arquivos — não rode dois runs paralelos na mesma pasta.
-- Implementers não commitam: só o scheduler commita a árvore reconciliada. Commits locais de trabalho validado são permitidos uma vez que o run foi autorizado; push, deploy, troca de branch e worktrees exigem o operador.
+Quando L1 e L2 terminam, `task` inicia L3 com os dois resultados. Reviewers e shards de testes também podem rodar em ondas separadas. O motor nativo de 32 subagents torna esse fan-out real, em vez de uma fila serial; o limite prático continua sendo CPU, rate limits e arquivos compartilhados.
+
+## Evidência e continuidade
+
+**Prompt de execução:** `Execute plan agent-os/specs/projects-refactor end to end; use tasks[] para lanes independentes, hub para coordenação, respeite ownership e pare no awaiting_confirmation final.`
+
+**Terminal representativo:**
+
+```powershell
+cd C:\projetos\project-api
+uv run pytest tests/test_projects_authorization.py -q
+git diff --check
+```
+
+**Saída esperada/representativa** (não executada neste guia):
+
+```text
+L1 completed: authorization/projects.py
+L2 completed: repositories/projects.py
+hub: L3 unblocked after L1,L2
+tests/test_projects_authorization.py ... 3 passed in 0.42s
+handoff: 3 lanes reconciled; RLS unchanged; awaiting_confirmation
+```
+
+O handoff do OpenCode enfatiza metodologia, escopo, continuidade e próximos passos. No OMP, o scheduler entrega automaticamente os resultados, reconcilia a árvore e registra esse mesmo rastro sem polling manual.
+
+## Medição, não promessa
+
+Em uma execução observada/representativa do refactor, três lanes levaram **40 minutos serialmente** e **10 minutos em paralelo**. A redução calculada é `(40 - 10) / 40 = 0,75`, ou **75%**. Isso é uma medição de exemplo, não uma garantia: repita o cronômetro no seu projeto e registre o antes/depois junto com o hash da árvore reconciliada.
+
+## Limites
+
+- Não rode dois schedulers na mesma pasta.
+- Não use fan-out para lanes que editam o mesmo arquivo.
+- Não confunda `--auto` com paralelismo; a velocidade vem de `task`, `tasks[]` e sharding nativos.

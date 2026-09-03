@@ -4,118 +4,65 @@ sidebar_position: 3
 
 # PREVC
 
-> **Estado PREVC:** `prepare → plan → execute → validate → judge → refine → confirm` — PREVC é o único controlador; nenhum outro componente transiciona a fase.
+Um trabalho confiável passa por quatro movimentos simples: entender o pedido, fazer o trabalho aprovado, conferir o resultado e só então registrar a conclusão. PREVC dá nome a esse ciclo: **Prepare, Execute, Validate, Confirm**. A analogia é a de uma entrega de engenharia sênior: primeiro se define o contrato, depois se implementa, em seguida se testa contra evidência e, por fim, o responsável aceita ou devolve a entrega.
 
-PREVC é o controlador do ciclo de vida. Agents, skills e extensões fornecem capacidades limitadas; nenhum deles decide sozinho que o trabalho terminou.
+## O fluxo de quatro estágios
 
-## Fases
-
-```text
-OPERADOR FAZ UMA SOLICITAÇÃO
-        |
-        v
-PREPARE
-        |-- descobre contexto, lê regras, estado e handoff
-        |-- classifica o risco (harness-risk-router.mjs)
-        |-- planner cria o plano em agent-os/specs/<slug>/
-        v
-AWAITING_PLAN_APPROVAL
-        |-- o operador revisa objetivo, escopo, não-escopo e AC
-        v
-EXECUTE
-        |-- scheduler despacha lanes aprovadas (task + hub)
-        |-- WIP=1: uma unidade ativa por vez
-        v
-VALIDATE
-        |-- gate local por lane; gate full sobre a árvore reconciliada
-        v
-JUDGE
-        |-- gate full verde e fresco; judge read-only devolve recibo
-        v
-REFINE
-        |-- refiner read-only propõe melhorias; não escreve e não vota
-        v
-AWAITING_CONFIRMATION
-        |-- o operador revisa evidência e texto literal das propostas
-        v
-CONFIRM | REVISE | ABORT
-        |
-        v
-HANDOFF
+```mermaid
+flowchart LR
+  A[Prepare\ncontexto e contrato] --> B[Execute\ntrabalho aprovado]
+  B --> C[Validate\nprovas observáveis]
+  C --> D[Confirm\naceite e handoff]
+  C -. falha .-> B
+  D -. revisão .-> A
 ```
 
-## Estado durável
+Os nomes intermediários do harness, como aprovação de plano, Judge e Refine, são controles dentro desse ciclo. Eles não criam novos estágios: a aprovação libera **Execute**, o Judge e o Refine fortalecem **Validate**, e a revisão do operador encerra **Confirm**.
 
-A fase do ciclo de vida é persistente e sobrevive entre sessões. Cada transição é gravada por `harness-prevc-state.mjs` no arquivo de fase durável do projeto, serializada por um lock local do repositório.
+### Prepare
 
-```powershell
-# início em prepare
-node ~/.omp/agent/scripts/harness-prevc-state.mjs init --objective "<objetivo>" --spec agent-os/specs/<slug> --risk <low|medium|high|untrusted>
+Leia o pedido, as regras do projeto, o estado durável e o handoff anterior. Defina objetivo, escopo, não-escopo, critérios de aceite, risco, dependências e o comando de verificação. O plano fica aguardando aprovação quando a tarefa exige decisão do operador.
 
-# transições de fase
-node ~/.omp/agent/scripts/harness-prevc-state.mjs transition --to <fase>
+### Execute
 
-# leitura do estado
-node ~/.omp/agent/scripts/harness-prevc-state.mjs inspect --json
-```
+Faça somente o trabalho aprovado. O scheduler pode distribuir unidades independentes, cada uma com dono, dependências e arquivos declarados. WIP=1 mantém uma unidade ativa por vez, mesmo quando há fan-out entre lanes.
 
-Transições ilegais — aresta proibida, estado ou recibo inválido, gate ausente/desatualizado — são recusadas com código de saída 2 e não escrevem nada. A exceção é o guard de gate vermelho: `validate → judge` contra um gate full vermelho persiste atomicamente o estado `blocked` com a métrica/valor/limiar que bloqueou e ainda assim sai com código 2.
+### Validate
 
-Nenhum agent além do PREVC escreve a fase do ciclo de vida. Agents e skills são capacidades limitadas: não podem transicionar estado, aprovar evidência ou autoconfirmar conclusão.
+Colete provas que outra pessoa possa repetir: saída de comandos, critérios de aceite observáveis, estado atualizado e, quando aplicável, gate e revisão independente. Falha ou evidência ausente bloqueia o caminho; não é um sinal verde implícito.
 
-## Como usar
+### Confirm
 
-Inicie o PREVC com a descrição da tarefa:
+O operador revisa a evidência, o resultado e o handoff. Confirmar registra a conclusão; pedir revisão retorna ao planejamento; abortar registra o motivo. Sem confirmação explícita e handoff durável, o ciclo não se declara concluído.
+
+## A identidade de cada harness
+
+O **OpenCode** fornece a metodologia e a referência do ciclo, além da continuidade entre sessões. O **Oh My Pi** fornece o motor nativo de **32 subagentes**, com fan-out paralelo e sharding para dividir trabalho independente. O caminho OMP é relevante quando uma tarefa aprovada tem lanes realmente independentes e a execução paralela reduz o tempo; para uma unidade pequena ou dependente, siga o ciclo com um agente.
+
+## Iniciar e continuar
+
+No OMP, uma solicitação pode iniciar o ciclo:
 
 ```text
 /prevc prepare Adicionar endpoint de health check
 ```
 
-- Faz descoberta, classifica o risco e cria o plano via `planner`.
-- Para em `awaiting_plan_approval` aguardando sua confirmação.
-- Nada é editado antes da aprovação explícita; reconhecimento read-only é sempre permitido. A exceção de escrita pré-aprovação é o próprio pipeline de planejamento: o `planner` pode criar os artefatos canônicos em `agent-os/specs/<slug>/` (spec.md, plan.md, verification.md, decisions.md, tickets/, research.md, prototype/).
-
-Depois que você aprovar (linguagem natural ou):
+Após a aprovação do plano:
 
 ```text
 /prevc run
 ```
 
-- Executa dentro do escopo aprovado.
-- Valida o resultado e entrega o handoff.
+O estado PREVC e o handoff são duráveis. Isso permite que a próxima sessão retome o contrato e a evidência, em vez de confiar em memória de conversa.
 
-Uma instrução para executar um plano ou spec **nomeado** de ponta a ponta já é a autorização do run autônomo: sem aprovação por task; o run para uma única vez em `awaiting_confirmation` para o spec inteiro.
+## Regras essenciais
 
-## O gate e o Judge
-
-Antes de `validate → judge`, o gate completo deve estar **verde e fresco**:
-
-```powershell
-node ~/.omp/agent/scripts/harness-quality-gate.mjs --mode full
-```
-
-O `sourceHash` do relatório deve igualar o hash atual da árvore. Gate ausente, desatualizado, ilegível ou não configurado recusa a transição (exit 2) sem escrever; gate vermelho recusa e persiste `blocked` com o blocker derivado.
-
-O `judge` é um agent **read-only**. Ele devolve um único recibo JSON com: `sourceHash`, relatório do gate, tier, veredito (`accept | revise | block`), pontuação de rubrica, critérios bloqueantes, caminhos de evidência, identidade do judge e data. O PREVC grava o recibo em um arquivo de recibo datado e só então avança para refine. O `sourceHash` do recibo precisa igualar o do último gate full verde.
-
-- `refine → awaiting_confirmation` exige veredito `accept`; `revise`/`block` roteiam para `revision_requested`/`blocked`.
-- `awaiting_confirmation → complete` exige `--operator-action confirm` **e** um `docs/harness/session-handoff.md` existente.
-
-## Por que não há auto-conclusão
-
-Uma mensagem do agent dizendo que rodou um comando não é um recibo confiável do runtime. A transição final exige ação explícita do operador (`confirm`) e um handoff durável. Esse limite é intencional: o sistema prefere parar em revisão a registrar uma conclusão que não consegue provar.
-
-## Regras do PREVC
-
-- WIP=1 sempre.
-- Conclusão exige evidência real.
-- Não tocar arquivos fora do escopo aprovado.
-- Trabalho adjacente vira `not_started`.
-- Se a verificação falhar, o trabalho é marcado como `blocked`.
-- Se o Judge não for `accept`, não confirma.
-- Refine não altera o resultado do Judge nem aprova regras.
-- Operações rotineiras de baixo risco (início de sessão, checagens de status, instalação explícita de dependência, formatação, reparos estreitos de teste) usam um fast path com verificação objetiva, sem a cerimônia do PREVC.
+- Execute apenas o escopo aprovado.
+- Mantenha WIP=1 por unidade ativa.
+- Trate trabalho adjacente como `not_started`.
+- Valide com evidência real e atual.
+- Não confirme sem revisão do operador e handoff.
 
 ## Próximo passo
 
-Veja [Harness Contínuo](./continual-harness) para entender findings, Refine e injeção de regras, ou [WIP=1](./wip-one) para a disciplina de execução.
+Veja [WIP=1](./wip-one) para a disciplina de foco ou [Evidência e Handoff](./evidence-and-handoff) para o formato das provas.
