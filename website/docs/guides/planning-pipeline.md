@@ -6,7 +6,7 @@ sidebar_position: 0
 
 > **Estado PREVC:** `prepare → plan` — o pipeline termina em `awaiting_plan_approval`, o único gate de aprovação do planejamento.
 
-Planejar é um **pipeline fixo** dentro da fase PREPARE do PREVC. O resultado é mais consistente, com menos slop, e mais rápido do que um fluxo livre.
+O pipeline de planejamento estrutura a fase Prepare do PREVC em uma sequência determinística de dimensionamento, detalhamento e decomposição em tickets de execução, garantindo planos consistentes antes de qualquer escrita de código.
 
 ## O pipeline (`/planner`)
 
@@ -65,7 +65,7 @@ O conjunto `tickets/` **é** a lista de tarefas: o scheduler o lê direto como l
 
 ## Execute: implement, sem race
 
-Depois da aprovação, o `scheduler` despacha cada lane para um implementer que segue a disciplina da skill `implement` — TDD nos seams combinados, typecheck e testes por arquivo, suite completa no fim (veja [Dispatch Paralelo](./parallel-dispatch)).
+Depois da aprovação, o `scheduler` despacha cada lane para um implementer que segue a disciplina da skill `implement` — TDD nos seams combinados, typecheck e testes por arquivo, suíte completa no fim (veja [Dispatch Paralelo](./parallel-dispatch)).
 
 **Implementers não commitam.** Só o scheduler commita, reconciliando todas as lanes num commit local — assim lanes paralelas nunca correm no git. Uma lane escreve um arquivo por vez.
 
@@ -77,3 +77,8 @@ Depois da aprovação, o `scheduler` despacha cada lane para um implementer que 
 | Sharpen | Objetivo + código | Decisões + assumptions rotuladas |
 | Decompose | Decisões | Lane table (tickets com blocking edges) |
 | Aprovação | Lane table | `awaiting_plan_approval` — um único gate |
+
+## O que isto prova e o que não prova
+
+- **O que prova:** que o plano foi decomposto em tickets verticais com dependências explícitas e verificação objetiva aprovada pelo operador.
+- **O que não prova:** não garante que requisitos omitidos pelo usuário tenham sido magicamente adivinhados pelo agente.

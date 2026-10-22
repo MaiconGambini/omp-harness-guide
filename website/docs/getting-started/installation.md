@@ -4,11 +4,7 @@ sidebar_position: 2
 
 # Instalação
 
-O Harness Oh My Pi é distribuído no diretório `omp/agent/` deste repositório.
-Essa árvore contém os arquivos que o Oh My Pi carrega em
-`~/.omp/agent`: agents, comandos, scripts, extensão, configuração e skills
-gerais. Ela complementa uma instalação base do Oh My Pi; não instala o
-runtime do Oh My Pi nem substitui sua configuração.
+O guia de instalação descreve o procedimento para obter, auditar e instalar a distribuição pública do Harness Oh My Pi em um ambiente local limpo. Essa árvore contém os arquivos que o Oh My Pi carrega em `~/.omp/agent`: agentes, comandos, scripts, extensões, configuração e skills gerais. O pacote complementa uma instalação base do Oh My Pi; ele não instala o runtime do Oh My Pi nem substitui suas configurações gerais de editor.
 
 A instalação é limpa: não existe merge automático sobre uma configuração
 existente. O pacote público não anuncia uma release semântica; identifique o
@@ -66,13 +62,14 @@ New-Item -ItemType Directory -Force $target | Out-Null
 Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
 ```
 
+![Fluxo de instalação e bootstrap do harness](/omp-harness-guide/img/diagrams/onboarding-instalacao.png)
+*Fluxo de instalação, validação do pacote público e bootstrap do harness.*
 O pacote não inclui estado de sessão, bancos locais, caches, findings,
 traces, receipts ou outras evidências de runtime.
 
 ## Passo 5: Reabrir e conferir
 
-Feche e reabra o Oh My Pi. Agents, comandos, skills e extensões são carregados
-somente na inicialização. Confira os arquivos gerenciados:
+Feche e reabra o Oh My Pi. Agentes, comandos, skills e extensões são carregados somente na inicialização. Confira os arquivos gerenciados:
 
 ```powershell
 Get-ChildItem "$env:USERPROFILE\.omp\agent" -Recurse -File |
@@ -84,20 +81,17 @@ publicado para inspeção e auditoria.
 
 ## Estrutura instalada
 
-Após a instalação, `~/.omp/agent` contém os diretórios e arquivos do manifesto:
+Após a instalação, `~/.omp/agent` contém a distribuição pública auditada pelo manifesto (299 arquivos no total):
 
-- `commands/` — comandos do harness, incluindo `/prevc` e suporte.
-- `agents/` — perfis de agents permitidos pela distribuição.
-- `scripts/` — utilitários Node portáveis.
-- `extensions/` — extensões nativas carregadas pelo Oh My Pi.
-- `skills/` — skills gerais e defensivas, carregadas sob demanda.
-- `docs/` — contexto global compartilhado, quando incluído no manifesto.
-- `config.yml` — configuração pública de agents e papéis de modelo.
-- `omp-port-manifest.json` — inventário e hashes do pacote.
+- `agents/` — 25 perfis de agentes aprovados para a distribuição pública.
+- `skills/` — 110 skills defensivas e metodológicas carregadas sob demanda.
+- `commands/` — 21 comandos do harness, incluindo `/prevc`, `/maestri-team` e suporte operacional.
+- `scripts/` — 55 utilitários Node portáveis para transições de ciclo, validações de manifesto e métricas de fluxo.
+- `extensions/` — 2 extensões nativas carregadas pelo Oh My Pi na inicialização.
+- `config.yml` — configuração pública de agentes e papéis de modelo.
+- `omp-port-manifest.json` — inventário criptográfico com hashes SHA-256 de cada arquivo distribuído.
 
-Consulte o manifesto para a contagem e a revisão exatas do checkout. Não trate
-essas quantidades como uma versão ou como promessa de capacidade.
-
+Consulte o manifesto para verificar os hashes do seu checkout. Essas quantidades refletem a árvore distribuível atual e não representam promessa de capacidade arbitrária.
 Não fazem parte do pacote: skills `recon-*`, `redteam-*`, `hiagosh-*`,
 `wstg-*`, exploração, pentest, chains de ataque e estado privado local.
 
@@ -105,10 +99,15 @@ Não fazem parte do pacote: skills `recon-*`, `redteam-*`, `hiagosh-*`,
 
 | Problema | Ação |
 |---|---|
-| `validate-public-subset` falha | Leia o motivo e não instale uma árvore que falhou no validator. |
+| `validate-public-subset` falha | Leia o motivo e não instale uma árvore que falhou no validador. |
 | O destino `~/.omp/agent` já existe | Renomeie-o para `omp-agent-backup`; não faça merge manual antes do backup. |
 | Oh My Pi não carrega os comandos | Feche e reabra o Oh My Pi; a configuração é carregada apenas na inicialização. |
 | Um script do harness falha | Verifique Node.js 20+, a revisão do checkout e os caminhos exibidos pelo script. |
+
+## O que isto prova e o que não prova
+
+- **O que prova:** que os arquivos instalados em `~/.omp/agent` correspondem com exatidão ao manifesto público validado, sem arquivos de evidência privada nem credenciais vazadas.
+- **O que não prova:** não garante que os provedores de modelo no seu `config.yml` possuam chaves ativas ou cotas suficientes, nem substitui os testes e o build da sua aplicação.
 
 ## Próximo passo
 

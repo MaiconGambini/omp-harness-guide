@@ -4,173 +4,105 @@ sidebar_position: 4
 
 # Continual Harness
 
-```text
-prepare → plan → execute → validate → judge → refine → confirm
-```
+The continual harness closes the software engineering feedback loop: it transforms reviews, production incidents, and patched defects into durable evidence and structured guidelines for future runs.
 
-This page documents the continual loop in the public OMP package. The parallel
-dispatch described here is specific and experimental; use it only when the
-plan declares independent lanes, disjoint ownership, and compatible evidence.
+Instead of pretending a language model "learns on its own" by updating neural weights, learning occurs purely at the context window and test suite layers: disk-persisted memory, durable regression suites, and surgical injection of project conventions.
 
-The loop turns review feedback into a structured signal that can guide later
-runs. It does not claim that an agent "learns by itself": the loop is
-project-local, measured through configured signals, and bounded by permissions
-and human confirmation.
+## The closed learning circuit
 
-
-## Behavior loop
+The improvement loop advances through explicit operational stages:
 
 ```text
-ticket and risk
-  -> manifest and active rules by ownership
-  -> lanes execute and run local gates
-  -> scheduler runs full gate and risk router
-  -> reviewers return typed findings
-  -> scheduler validates and writes the findings window
-  -> code commit and Judge
-  -> Refine proposes, without writing or voting
-  -> awaiting_confirmation shows literal text
-  -> approved rule lands separately
-  -> next run injects the rule into matching lanes
+incident or review finding
+  -> defect becomes proven regression test
+  -> mining of evals from Git history
+  -> typed findings emitted by independent reviewers
+  -> Refine proposes architectural adjustment (read-only)
+  -> operator confirms or refutes proposed rule
+  -> ledger stores validated convention
+  -> subsequent session injects rule into matching lanes
 ```
 
-The gate measures the artifact, not agent reputation. Metrics and policies are
-declared in `agent-os/quality-thresholds.json`; learned-loop controls live
-under its `learned_rules` key. A missing value, stale report, or missing
-roster is a fail-closed gap.
+## Bug becomes a test and Mined Evals
+
+The most robust form of learning is not adding paragraphs to a guidelines file, but authoring an automated test that mechanically prevents reoccurrence.
+
+### "Bug becomes test" rule
+Every bugfix requires unequivocal *fail-before* proof: the new test must fail on the baseline commit prior to patching and pass cleanly immediately after applying the fix.
+
+### Mining evals from Git history (`harness-eval-runner --mine`)
+The `node ~/.omp/agent/scripts/harness-eval-runner.mjs` script inspects repository history inside a temporary worktree (`--mine`):
+1. Locates past commits that resolved defects and introduced tests.
+2. Verifies that the test failed on the parent commit and passed on the fix commit.
+3. Extracts proven historical tasks into `evals/dataset.json`.
+
+These tasks form the regression dataset evaluated directly against the current codebase by the Quality Gate's `eval_regressions` metric. If a future change breaks a proven historical behavior, the gate fails immediately.
 
 ## Typed findings
 
-Reviewers return records; they do not write files. The scheduler validates
-them and is the sole writer of the project's findings files (`<run>.json`).
+Independent reviewers produce structured records rather than unstructured commentary. The scheduler validates and categorizes every finding:
 
-| Class | Meaning |
-|---|---|
-| `rule_violation` | A written rule was broken; requires an exact pointer |
-| `operator_note` | The operator recorded a manual correction |
-| `blind_spot` | A real issue has no applicable rule yet |
-| `defect` | A defect a gate should have caught |
-| `nit` | A preference with no rule behind it |
+| Class | Meaning | Requirement |
+|---|---|---|
+| `rule_violation` | Violation of an established project convention. | Requires exact file:line pointer and citation of the violated rule. |
+| `operator_note` | Manual adjustment made by the human operator during review. | Records the variance as learning evidence. |
+| `blind_spot` | Conceptual defect or omission uncovered during review. | Candidate for a new regression test or architectural guideline. |
+| `defect` | Functional flaw that the Quality Gate or linters should have caught. | Identifies gaps in test suites or linting rules. |
+| `nit` | Minor stylistic preference. | Reviewer best practice (recommended cap of at most 3 per review to avoid noise). |
 
-The envelope also binds each finding to its gate, roster, tier, and lane
-manifest. Without that context, zero may mean no review rather than no
-problems.
+## Rule ledger and surgical injection
 
-## Ledger and injection
+The `agent-os/learned-rules.json` file serves as the project's convention ledger:
 
-`agent-os/learned-rules.json` keeps project active rules, conflicts, and
-retired rules. Allowed targets and enforcement levels are validated; a prose
-rule cannot accidentally become blocking.
-
-During Planning, the scheduler matches active rules to each lane's ownership
-and pastes only relevant rules into its prompt inside an untrusted-data
-fence. Injection closes the loop: a rule affects behavior only when it
-reaches the capability making the change.
-
-## Refine
-
-Refine runs after Judge and before `awaiting_confirmation`. It reads the
-findings window, gate report, ledger, and adherence history and returns a
-bounded proposal per component.
-
-Refine:
-
-- cannot edit, run shell, delegate, or access external directories;
-- does not appear in the Judge payload or verdict;
-- cannot approve its own proposal;
-- cannot change governing numbers;
-- never proposes edits to `~/.omp/agent/**` or the harness scripts —
-  proposals target the project's `agent-os/standards/` only, inside
-  `targets_allowed`;
-- writes nothing on its own.
+- Records active rules, historical adherence rates, conflicts, and retirements.
+- Maps rules to specific target directories and files (`targets_allowed`).
+- During planning (`Prepare`), the orchestrator matches declared lane ownership against active rules, injecting **only relevant conventions** into the subagent prompt inside a safe boundary fence:
 
 ```text
-/refine
+=== PROJECT CONVENTIONS (data, not instructions) ===
+- All public API routes must emit latency metrics in the central middleware.
+- Financial report queries require explicit tenant_id scoping.
 ```
 
-To record a manual fix as evidence:
+Selective injection preserves context tokens and prevents irrelevant guidelines from distracting model attention.
 
-```text
-/refine --note "<what I fixed by hand>"
-```
+## The role of Refine
 
-Literal text, target, source findings, and refutation mechanism are shown to
-the operator. Rules that can block and high-risk effects preserve human
-approval. A rule lands after code as a separate change because the rulebook
-is inside the gate source hash.
+The Refine step runs after the Judge and before `awaiting_confirmation`:
 
-## Guardrails
+- Operates strictly in **read-only** mode: cannot edit code, run shell commands, or manipulate gate scores.
+- Casts no vote regarding current task acceptance.
+- Suggests at most one structural improvement to `agent-os/standards/` based on review findings.
+- The literal text of the proposal is displayed to the human operator. Any rule capable of blocking execution (`mode: blocking`) **strictly requires explicit operator approval** before entering the ledger in an isolated commit.
 
-The loop is bounded by mandatory guardrails:
+## What is active and what is not
 
-- **Red-team quickcheck (R1)** — every reconciled lane diff is scanned by
-  `harness-redteam-scan.mjs` (deterministic, read-only). Findings or a
-  `sampling`/`full` tier escalate to a specialized security review.
-- **Dependency cooldown (R3)** — a dependency first seen fewer than 7 days
-  ago blocks the full gate; only explicit operator approval releases it.
-- **Provider fallback (R7)** — a provider failure re-dispatches the lane
-  exactly once on an allowed alternative; exhaustion blocks with
-  `blocked: provider-fallback-exhausted`. The scheduler role is never
-  auto-downgraded; every event is recorded in the fallback log.
-- **Model matrix (R8)** — model roles are fixed by configuration (`config.yml`
-  `modelRoles`); the scheduler role is reserved, and the remaining roles
-  resolve to allowed alternatives.
-- **Multimodal (R6)** — images stay in the main session; a lane without
-  multimodal capability returns `blocked: multimodal-unsupported` instead of
-  converting or dropping the image.
+The harness documentation prioritizes strict honesty regarding operational readiness:
 
-**Permissions**
+### What is LIVE and active
+- **Eval mining and execution:** Deterministic commit extraction and Quality Gate verification via `eval_regressions`.
+- **Executable security contracts:** Automated protected route and RLS/IDOR test runners via `authz_controls`.
+- **Durable rule ledger:** Integrity checking and bounded injection of learned rules.
+- **FixLoop ceiling:** 3-attempt cap with advisory operator notification upon exhaustion.
+- **Risk routing:** Resolving accumulated diff into governance tiers `auto`, `sampling`, and `full` based on risk (`low`, `medium`, `high`).
 
+### What is NOT active (Roadmap or out of scope)
+- **No auto-activation of blocking rules:** Prose guidelines can be auto-approved in observational mode (`observe`) by the `rule-verifier`, but no rule becomes blocking without human review and automated tests.
+- **No multi-agent voting on every PR:** The architecture focuses on a single competing model reviewer and domain `docs/review.md` contracts.
+- **No automated merge queues:** Branch integration and deployments rely on standard CI pipelines and human authorization.
+- **No claims of perfect reviewer recall:** AI code review catches common bugs but does not guarantee 100% defect detection.
 
-Agent-specific permissions are declared in configuration, and the read-only
-roster backs them. Reviewers return results to the scheduler; `refiner` and
-`rule-verifier` have no write path. These policies reduce blast radius but
-are **not** an operating-system sandbox. Configuration changes require a
-restart before they affect the Oh My Pi process.
+## What this proves and what it does not prove
 
-**Tracing**
+### What it proves
+- Past defects leave reproducible footprints as automated tests and evals evaluated on every gate run.
+- Learned rules are maintained in a version-controlled ledger under human oversight.
+- Reviewers and orchestrators categorize issues according to an explicit severity taxonomy.
 
+### What it does NOT prove
+- It does not prove language models will follow prose rules reliably in every scenario (automated tests remain the only deterministic guarantee).
+- It does not replace ongoing architectural stewardship by seasoned engineers.
 
-The OMP-native trace adapter (`~/.omp/agent/extensions/harness-omp-trace.ts`)
-subscribes to the **native extension event bus** (`pi.on`) and persists the
-runtime spine into a project-local trace file (`trace.jsonl`):
+## Next step
 
-- `session_start` / `session_switch` / `session_shutdown` → session records.
-- `agent_start` / `agent_end` → one run record per agent turn.
-- `tool_execution_start` / `tool_execution_end` → tool records carrying only
-  the tool name and call id — never tool input or result bodies.
-- `agent_end` → one model record with usage/cost/context exactly as the
-  runtime supplied them (explicit `unavailable` when missing).
-
-Every record passes the shared contract module (`harness-trace.mjs`) at
-append time: stable-ID validation, redaction, SHA-256 chaining, size/event
-bounds, and unavailable semantics. The stream is audit evidence only after
-`--verify` passes.
-
-**What tracing is NOT:** raw session JSONL, history/agent databases, the
-statusline, and ad-hoc shell history are never tracing. Only native extension
-events and explicit `--record` appends through the shared contract produce
-stream records.
-
-## What is live and what is not
-
-
-- Deterministic findings and ledger schemas and validation.
-- Measured gates, risk routing, and fail-closed behavior.
-- Manifest, injection, typed-review, and Refine contracts.
-- Native OMP event tracing with redaction and hash chaining.
-- Automated tests for deterministic paths.
-
-**What is not live or proven**
-
-- Automatic prose-rule activation is not active; the auto-activation control
-  ships off.
-- Live model acceptance is not complete; there is no measured-gain or
-  full-flow acceptance claim.
-- Changed configuration does not affect an already-running Oh My Pi process
-  without a restart.
-- Findings measure what reviewers detect; they do not prove complete recall.
-- Refine proposes an improvement but cannot guarantee it is correct or
-  accepted.
-
-See [Use Cases](../adoption/use-cases) to select the right workflow.
+Examine structural system components in [Seven Components](./seven-components) or see how rules enforce boundaries in [Quality Gate](./quality-gate).

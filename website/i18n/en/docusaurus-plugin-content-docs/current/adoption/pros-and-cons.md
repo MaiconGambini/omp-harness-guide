@@ -4,70 +4,44 @@ sidebar_position: 2
 
 # Pros and Cons
 
-An honest assessment of what the harness delivers and what it costs.
+A transparent, balanced evaluation of what the harness delivers alongside its operational costs and engineering trade-offs.
 
 ## Pros
 
-### Continuity between sessions
+### Deterministic cross-session continuity
+You close the terminal and return the next morning with full context intact. The PREVC lifecycle phase, recorded blockers, design choices, and structured handoff (`session-handoff.md`) persist on disk. Developers avoid burning tokens and engineering time re-explaining background context to a new agent.
 
-You open Oh My Pi tomorrow and it knows exactly what you were doing. You do
-not need to re-explain the context, re-read files or guess what was left
-pending.
+### Cognitive focus discipline (WIP=1)
+Restricting execution to a single active task prevents attention dispersion (*context mixing*). A default 3-attempt ceiling on validation macro-loops (`fixLoop.maxAttempts`) prevents infinite back-and-forth loops between author and reviewer, pausing cleanly for human intervention before exhausting budgets.
 
-### Enforced WIP=1
+### Objective evidence and transparent Quality Gate
+Verbal assertions from the model carry zero evidentiary value. The Quality Gate evaluates deterministic metrics and transparently displays measurement coverage (**`Measured: N/M`**). Explicit warnings alert reviewers whenever fewer than half of available tooling suites ran.
 
-The discipline of one task at a time reduces abandoned parallel work. Each
-feature goes to the end or is recorded as blocked with an exact cause.
+### Independent review across competing model families
+Assigning implementation to one model (e.g., Gemini Flash) and review to a competing architecture (e.g., GPT Luna) eliminates blind spots and shared error correlations from a single provider. Domain contracts (`docs/review.md`) enforce focus on critical bugs while suppressing cosmetic noise.
 
-### Objective evidence
+### Complete traceability and rollback procedures
+Standardized Pull Request templates mandate explicit Risk Tiers, executed test commands with captured output, formal rollback instructions (`How to revert`), and designated human ownership. Commit trailers cryptographically bind delivery to the validation report hash (`sourceHash`).
 
-"It worked" is not enough. The harness requires commands run, output
-captured and three-layer verification before marking a feature as complete.
-
-### Durable lifecycle
-
-The PREVC phase survives across sessions, written by
-`harness-prevc-state.mjs`. No agent can silently mark work complete.
-
-### Auditing and recovery
-
-Decisions, blockers and handoffs are recorded in files. If something breaks,
-you know when, why and what the previous state was.
-
-### Planning separated from execution
-
-For complex tasks, the harness separates the planner, generator and
-evaluator roles. This reduces self-assessment bias.
+### Governed parallel dispatch and Maestri teams
+The orchestrator dispatches parallel lanes with declared file ownership and automated synchronization, enabling specialized agent teams with strictly bounded responsibilities (architecture, testing, infrastructure, security, and review).
 
 ## Cons
 
-### More files
+### Increased token and provider costs
+Running independent reviewers on premier models, executing multi-agent team sessions, and evaluating continuous regression suites increases token consumption and provider credential overhead.
 
-The harness adds `feature_list.json`, `STATE.md`, `session-handoff.md`,
-`sprint-contract.md` and others. For small projects, this can feel like
-bureaucracy.
+### Governance file overhead
+The harness introduces specifications in `agent-os/specs/`, gate reports, domain contracts in `docs/review.md`, handoffs, and PR templates. For small single-script utilities, this structure can feel overly bureaucratic.
 
-### Constant discipline
+### Constant operational discipline required
+The harness's value depends on strict adherence: honoring WIP=1, capturing real output, and updating handoffs every session. Taking shortcuts or editing files outside PREVC degrades durable state integrity.
 
-WIP=1, three-layer verification and mandatory handoff require discipline in
-every session. Skipping steps reduces the value of the harness.
+### Does not replace product discernment and engineering judgment
+The harness enforces process, traceability, and empirical measurement; it does not invent good architecture or ensure business value. Flawed design remains flawed design, even when validated with exhaustive evidence ("you land it, you own it").
 
-### Maintenance cost
+### Initial learning curve
+Initial adoption requires understanding phase boundaries, command conventions, and configuration files. While the investment pays off on long-term projects, it requires initial team orientation.
 
-The state files need to be kept up to date. If `STATE.md` becomes outdated,
-the next session starts with wrong information.
-
-### It does not replace good engineering
-
-The harness does not guarantee code quality; it structures traceability through
-evidence. Bad code remains bad code even when the evidence is complete.
-
-### Initial curve
-
-The first session with the harness requires learning commands, concepts and
-the PREVC flow. The investment pays off on long projects, but can be
-excessive for single tasks.
-### Clean installation, no merge
-
-The public package is copied into a clean `~/.omp/agent` directory after a
-backup. It does not silently merge into an existing configuration.
+### Clean folder installation
+No automated merge exists over existing installations. Upgrades require backing up customized configs and copying the clean `omp/agent/` distribution.

@@ -37,4 +37,15 @@ OMP executes PREVC's seven steps in four phases. Grouping defines the boundaries
 1. **Prepare (`prepare + plan`):** The harness discovers context, classifies risk, defines ownership (`src/auth.py`, `tests/test_auth.py`), and waits for plan approval.
 2. **Execute (`execute`):** After approval, the scheduler uses `task` and one `tasks[]` call when independent lanes exist; `hub` coordinates messages between agents.
 3. **Validate (`validate + judge`):** The runtime runs verification commands and a read-only Judge compares the result with the contract. Output must be captured in the terminal; this guide does not provide results from a real execution.
-4. **Confirm (`refine + confirm`):** Refine proposes improvements without writing or voting, and the operator reviews the evidence before confirming the handoff.
+4. **Confirm (`refine + confirm`):** Refine proposes improvements without writing or voting, and the operator reviews the evidence before confirming the handoff. Human confirmation is the default rule; the auto-confirm mechanism remains disabled until explicitly opted in with strict evidence criteria.
+
+## What this proves and what it does not
+
+- **What it proves:** that the runtime package was copied to `~/.omp/agent`, that Oh My Pi recognizes the native commands, and that the PREVC lifecycle transitions between phases following the durable on-disk contract.
+- **What it does not prove:** it does not prove application code correctness, does not guarantee business test coverage, and does not replace human validation of changes.
+
+## Next steps
+
+- Review environment [Prerequisites](./prerequisites).
+- Follow the complete step-by-step [Installation](./installation).
+- Run your [First Session](./first-session) with project profiling and durable context.

@@ -65,6 +65,8 @@ New-Item -ItemType Directory -Force $target | Out-Null
 Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
 ```
 
+![Harness installation and bootstrap workflow](/omp-harness-guide/img/diagrams/onboarding-instalacao.png)
+*Harness installation, public package validation, and bootstrap workflow.*
 The package does not include session state, local databases, caches, findings,
 traces, receipts, or other runtime evidence.
 
@@ -83,21 +85,17 @@ and audit.
 
 ## Installed structure
 
-After installation, `~/.omp/agent` contains the directories and files listed
-by the manifest:
+After installation, `~/.omp/agent` contains the audited public distribution listed in the manifest (299 files in total):
 
-- `commands/` — harness commands, including `/prevc` and support.
-- `agents/` — agent profiles allowed by the distribution.
-- `scripts/` — portable Node utilities.
-- `extensions/` — native extensions loaded by Oh My Pi.
-- `skills/` — general and defensive skills, loaded on demand.
-- `docs/` — shared global context, when included by the manifest.
+- `agents/` — 25 agent profiles approved for public distribution.
+- `skills/` — 110 defensive and methodological skills loaded on demand.
+- `commands/` — 21 harness commands, including `/prevc`, `/maestri-team`, and operational support.
+- `scripts/` — 55 portable Node utilities for lifecycle transitions, manifest validation, and flow metrics.
+- `extensions/` — 2 native extensions loaded by Oh My Pi at startup.
 - `config.yml` — public agent and model-role configuration.
-- `omp-port-manifest.json` — package inventory and hashes.
+- `omp-port-manifest.json` — cryptographic inventory with SHA-256 hashes for every distributed file.
 
-Use the manifest for the exact checkout counts and revision. Do not treat those
-quantities as a version or a capability promise.
-
+Use the manifest to verify hashes against your checkout. These counts reflect the current distributable tree and do not represent arbitrary capability promises.
 The package does not include `recon-*`, `redteam-*`, `hiagosh-*`, `wstg-*`,
 exploitation, pentest, attack chains, or private local state.
 
@@ -109,6 +107,11 @@ exploitation, pentest, attack chains, or private local state.
 | `~/.omp/agent` already exists | Rename it to `omp-agent-backup`; do not merge manually before the backup. |
 | Oh My Pi does not load commands | Close and reopen Oh My Pi; configuration loads only at startup. |
 | A harness script fails | Check Node.js 20+, the reviewed checkout revision, and the paths shown by the script. |
+
+## What this proves and what it does not
+
+- **What it proves:** that the installed files in `~/.omp/agent` match the audited public manifest exactly, without private evidence or leaked credentials.
+- **What it does not prove:** it does not guarantee that model providers in your `config.yml` have active API keys or sufficient quota, nor does it replace your application's test suite and build.
 
 ## Next step
 

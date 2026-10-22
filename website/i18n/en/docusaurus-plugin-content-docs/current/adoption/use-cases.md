@@ -4,228 +4,109 @@ sidebar_position: 1
 
 # Use Cases
 
-Choose the workflow by risk, dependencies, and duration, not only by file
-count. Gates measure only metrics declared in
-`agent-os/quality-thresholds.json#metrics`; a missing signal is a gap, not an
-approval.
+The use cases section guides workflow selection based on risk classification, dependencies, and architectural impact across development tasks. Select workflows based on risk and dependencies rather than raw file counts. The Quality Gate evaluates metrics declared in `agent-os/quality-thresholds.json`; missing signals or crashing tools constitute explicit gaps (*fail-closed*), never tacit approval.
 
-| Scenario | Recommended selection |
-|---|---|
-| Simple one-file task | One short lane, WIP=1 |
-| Small bug fix | Reproduction, minimal fix, regression |
-| Complex feature | Spec, contract, ownership lanes |
-| Independent multitask | Parallel lanes with disjoint ownership |
-| Dependent multitask | Lanes serialized by dependencies |
-| Multi-session | Durable state and handoff |
-| High-risk or security | Full tier and specialist review |
-| Docs-only | Docs lane and source/link validation |
-| Refine and learned rule | Judge, Refine, separate confirmation |
-| Session resume | Derived briefing with source hash; refuses stale |
+| Scenario | Recommended selection | Governance and evidence |
+|---|---|---|
+| Single-file simple task | Short lane, WIP=1 | Tier `low`, local verification, and fast gate. |
+| Bugfix | Reproduction, fail-before, and regression | "Bug becomes test" rule: proven failure on baseline commit prior to patching. |
+| Complex feature | Spec, contract, and lanes by ownership | Tier `sampling` or `full`, full gate, and formal Judge receipt. |
+| Independent multitasking | Parallel lanes (`tasks[]`) | Disjoint file ownership; individual envelopes reconciled by orchestrator. |
+| Dependent multitasking | Serialized lanes by dependency | Sequential execution; advancement only upon evidence from preceding step. |
+| Multi-session initiative | Durable state and handoff | `session-handoff.md` with explicit `Verified Now` and `Broken Or Unverified`. |
+| High risk or security | Tier `full` and security audit | Mandatory red-team (N >= 3 proven attempts) and executable `authz_controls`. |
+| Project onboarding | `/maestri-team` and initialization | Profile setup, second-brain vault with Obsidian + Graphify, and PR template. |
+| Task triage | PREVC planning or local skill | "Is this worth building?" check, risk tier (`risk:*`), and rollback procedure. |
+| Documentation only | Docs lane and link verification | Static build validation without touching runtime or leaking private paths. |
+| Refine cycle and learned rules | Judge, Refine, and operator confirmation | Read-only proposal; ledger integration in an isolated follow-up commit. |
+| Session resumption | `/harness-session-start` | Bounded path-scoped briefing anchored to repository `sourceHash`. |
 
-## Simple one-file task
+## Single-file simple task
 
-**When to use:** a localized change with a clear requirement and no new
-dependency, migration, or high-risk-path effect.
+**When to use:** Localized modification, clear requirements, no new external dependencies, no database migrations, and no critical path changes.
 
-**Example prompt:**
-
+**Prompt example:**
 ```text
-/prevc prepare Fix the empty copy in src/components/EmptyState.tsx. Change
-only that file and run the area test and local gate.
+/prevc prepare Fix empty state copy in src/components/EmptyState.tsx. Modify
+only this file and run module tests and the local gate.
 ```
 
-**Expected behavior:** PREVC creates one WIP=1 unit, confirms scope, and runs
-the discovered verification and local gate. The scheduler escalates review
-only when the risk router or a gap requires it.
+**Expected behavior:** PREVC establishes a WIP=1 unit, validates strict scope, runs area tests, and checks the local gate. If accumulated diff remains low and touches non-sensitive areas, the router preserves tier `low`.
 
-**Common mistakes:** opening a large spec; touching adjacent files; calling a
-green gate proof when relevant metrics are unavailable.
+## Bugfix ("Bug becomes a test")
 
-## Small bug fix
+**When to use:** Any reported functional defect or regression.
 
-**When to use:** reproducible behavior with a likely bounded cause and an
-automatable regression.
-
-**Example prompt:**
-
+**Prompt example:**
 ```text
-/prevc prepare Reproduce the duplicate pagination error, add a regression
-test, make the smallest fix, and validate the affected route.
+/prevc prepare Reproduce pagination offset bug. Author a regression test
+demonstrating the failure prior to fixing, apply the minimal patch, and validate.
 ```
 
-**Expected behavior:** Plan records reproduction and acceptance criteria;
-Execute follows red-green; Validate runs regression and gates; Judge compares
-the fix with the original bug. A rule breach returns as a typed finding with
-a resolvable pointer.
-
-**Common mistakes:** fixing before reproducing; widening the refactor;
-recording a preference as `rule_violation` without citing a real rule.
+**Expected behavior:**
+1. The agent writes an automated test demonstrating the bug on baseline code (*fail-before*).
+2. The implementation patch is applied.
+3. The test suite executes again, demonstrating clean resolution (*pass-after*).
+4. The Quality Gate confirms the `eval_regressions` metric remains green.
 
 ## Complex feature
 
-**When to use:** multiple components, design decisions, schema changes,
-integrations, or independent acceptance criteria.
+**When to use:** Multiple affected modules, new API contracts, database schema changes, or cross-service integrations.
 
-**Example prompt:**
-
+**Prompt example:**
 ```text
-/prevc prepare Design and implement report exports. Specify contracts,
-separate API, worker, and UI ownership, and request approval before
-execution.
+/prevc prepare Design and implement asynchronous report export workflow.
+Specify contracts, isolate worker and API ownership, and await approval.
 ```
 
-**Expected behavior:** the planning pipeline produces a spec and evaluation
-contract, maps risk and ownership, divides the plan into bounded lanes, and
-keeps one active unit. The scheduler runs the full gate, the risk router
-selects review depth, and Judge consumes aggregated evidence.
+**Expected behavior:** PREVC produces a specification in `agent-os/specs/`, defining non-goals and acceptance criteria. The scheduler splits implementation into lanes with disjoint file ownership. The full gate evaluates under tier `sampling` or `full`, an independent reviewer in a competing model family inspects the diff against `docs/review.md`, and the Judge issues the formal receipt.
 
-**Common mistakes:** coding before approval; sharing files across lanes;
-using test volume as a substitute for acceptance criteria.
+## High risk or security
 
-## Independent multitask parallel lanes
+**When to use:** Touching authentication routes, session token validation, user authorization rules, billing logic, or harness governance policies.
 
-**When to use:** two or more tasks have no dependency and have disjoint file
-sets.
-
-**Example prompt:**
-
+**Prompt example:**
 ```text
-/prevc prepare Run the parser fix and status component update in parallel.
-Declare exclusive ownership and return evidence per lane.
+/prevc prepare Update session token expiration logic. Classify as high risk,
+require tier full, execute authorization tests and security red-team audit.
 ```
 
-**Expected behavior:** the scheduler builds the manifest before dispatch,
-injects only active rules matching each ownership set, and runs lanes in one
-native `task` wave with `hub` coordination. Each lane runs its local gate;
-the scheduler is the sole findings writer and runs the aggregate gate.
+**Expected behavior:**
+- The router compulsorily assigns tier `full`.
+- The `harness-security-contract` runner evaluates declared `authz_controls`.
+- The operator's security auditor executes exploit attempts against the modified surface (red-team with N >= 3 proven attempts), logging the verdict anchored to `sourceHash`.
+- Final completion requires explicit human operator confirmation; auto-confirmation is disabled for high-risk work.
 
-**Common mistakes:** parallelizing tasks that edit the same file; allowing
-reviewers to write findings; merging results without lane and capability
-data.
+## New project onboarding with Maestri team
 
-## Dependent multitask serialized lanes
+**When to use:** Introducing the harness into an existing repository or bootstrapping a greenfield application.
 
-**When to use:** one task produces a contract, schema, or artifact consumed
-by the next.
-
-**Example prompt:**
-
+**Prompt example:**
 ```text
-/prevc prepare Stabilize the API contract first, update the client second,
-and adapt the UI last. Do not start a lane before the prior lane returns
-evidence.
+/maestri-team --apply
 ```
 
-**Expected behavior:** PREVC represents blocking edges and runs only the
-released lane. Each boundary validates its artifact before the next dispatch;
-aggregate gates and Judge run when the chain ends.
+**Expected behavior:** The harness organizes specialized agent roles in Maestri, audits whether the project has PR templates, domain review contracts (`docs/review.md`), profile definitions in `agent-os/`, and initializes the second-brain vault (Obsidian + Graphify).
 
-**Common mistakes:** calling dependencies parallel; starting consumers
-against a provisional contract; hiding a blocker to keep execution moving.
+## Task triage and risk classification
 
-## Multi-session work
+**When to use:** Ingesting a new feature request or technical issue from Linear or an issue tracker.
 
-**When to use:** the goal does not fit one session or must survive pauses,
-agent changes, or later review.
-
-**Example prompt:**
-
+**Prompt example (via native PREVC command or the operator's local `triagem-task` skill, outside the public package):**
 ```text
-/prevc prepare Continue the active goal using the progress file and
-session-handoff.md. Confirm the latest valid gate before resuming the next
-WIP=1 unit.
+/prevc prepare Triage and plan incoming WebSocket migration evaluating value, risk, and rollback
 ```
 
-**Expected behavior:** the durable lifecycle phase, feature state, findings,
-ledger, and handoff persist in the repository. The new session rereads
-context and checks whether evidence is still valid; stale or missing reports
-fail closed.
+**Expected behavior:** The workflow (supported by operator triage routines or planning guidelines) formally evaluates whether the initiative is "worth building", applies a risk label (`risk:low`, `risk:medium`, `risk:high`), defines the rollback procedure (`How to revert`), and identifies the regression test to author.
+## What this proves and what it does not prove
 
-**Common mistakes:** relying on chat history; marking `passing` without
-output; reusing a report after its source changed.
+### What it proves
+- That each task category receives a proportional degree of rigor, testing, and security auditing.
+- That rollback procedures and regression tests are planned before touching production code.
 
-## High-risk or security work
+### What it does NOT prove
+- Category selection does not replace human engineering judgment when a complex defect necessitates fundamental architectural refactoring.
 
-**When to use:** authentication, credentials, payments, permissions,
-migrations, infrastructure, or paths matching `high_risk_paths`.
+## Next step
 
-**Example prompt:**
-
-```text
-/prevc prepare Fix session validation. Classify it as high risk, limit scope
-to auth, include abuse tests, and require full security review.
-```
-
-**Expected behavior:** the risk router selects full review; unavailable
-metrics prevent downgrade; specialist reviewers return typed findings; the
-red-team quickcheck runs per lane. A Refine proposal with a high-risk effect
-preserves operator confirmation before it can become a rule.
-
-**Common mistakes:** treating permissions as a sandbox; lowering the tier
-because unit tests passed; placing a secret in evidence or a finding.
-
-## Docs-only work
-
-**When to use:** content, navigation, or examples with no runtime change.
-
-**Example prompt:**
-
-```text
-/prevc prepare Update the bilingual installation guide, validate links and
-build, do not change runtime or declare governing numbers in prose.
-```
-
-**Expected behavior:** PREVC keeps ownership within docs, runs source, link,
-and build validation, and records gaps. Governing numbers remain in
-`quality-thresholds.json` keys, not documentation.
-
-**Common mistakes:** skipping the build because it is docs-only; duplicating
-config values in prose; claiming a configured capability has live
-acceptance.
-
-## Refine and learned-rule cycle
-
-**When to use:** typed findings show a recurring failure and Judge has
-already finished. Use `/refine --note` when the operator wants to record a
-manual fix as evidence.
-
-**Example prompt:**
-
-```text
-/refine
-```
-
-**Expected behavior:** Refine reads the gate-bound window and ledger,
-proposes at most one improvement per component, and writes nothing. Literal
-proposal text appears at `awaiting_confirmation`; rules that can block
-require operator approval and land as a separate change. Active rules are
-injected into matching lanes on the next run.
-
-**Common mistakes:** treating a proposal as approval; letting the refiner
-edit the ledger; giving Refine a Judge vote; claiming auto-activation (the
-auto-activation control ships off).
-
-## Session resume
-
-**When to use:** a fresh session or an agent handoff, when re-reading every
-state file is costly and the risk is injecting stale context.
-
-**Example prompt:**
-
-```text
-/harness-session-start
-```
-
-**Expected behavior:** session start reads the global context and the durable
-lifecycle phase, runs a small path-scoped briefing when available (stamped
-with a source hash), and declares the active task. A stale or missing
-briefing fails closed — a gap to name, never a pass. The checkout, tests, and
-runtime always outrank the briefing; a conflict becomes a finding, not a
-fact.
-
-**Common mistakes:** trusting chat history over durable state; injecting a
-briefing without revalidating against the checkout; treating a missing
-progress file as "nothing pending".
-
-See [Continual Harness](../concepts/continual-harness) for the full loop
-contract.
+Review the trade-offs and operational costs of this model in [Pros and Cons](./pros-and-cons) or examine safeguards in [Security](./security).

@@ -4,148 +4,90 @@ sidebar_position: 3
 
 # Parallel Dispatch
 
-Executes the tasks of an approved plan in **parallel subagents**, each with
-its own scope, under PREVC lifecycle control. The scheduler is the
-Execute-phase dispatcher: it receives the approved plan, dispatches the
-independent lanes at the same time, and reconciles the results.
+Parallel dispatch allows running multiple work units concurrently during the PREVC Execute phase, enforcing strict write isolation per file under centralized `scheduler` coordination.
 
-**OMP execution model.** Oh My Pi dispatches lanes natively:
+![Orchestration and roles](/omp-harness-guide/img/diagrams/orquestracao-e-papeis.png)
+*Orchestration and roles: distribution of responsibilities across scheduler, specialists, and reviewers.*
 
+## How real orchestration operates
 
+Parallel dispatch in Oh My Pi enforces strict ownership invariants to prevent race conditions and merge conflicts:
 
-- One `task` call carries a **`tasks[]` array** — all independent lanes in a
-  single wave of independent lanes.
-- `hub` handles peer coordination; **results auto-deliver** — there is no
-  background stub and no status-polling fallback.
-- Reviewers also run concurrently: code review + architecture review in one
-  `task` batch.
-- Tests shard across parallel test-runner lanes (split by test file/dir/tag)
-  and are reconciled before reading coverage — a large suite is never run
-  serially in the main agent.
-
-## When to use
-
-- A plan with **independent lanes** — disjoint files, no sequential
-  dependency between them.
-- Multi-component work where distinct parts can advance together (for
-  example, an authorization layer in parallel with a persistence layer).
-
-**When NOT to use:** a strictly serial WIP=1 plan, lanes that touch the same
-file, or a 1-file feature. In those cases the scheduler overhead does not pay
-off — use the [complex feature](./complex-feature) flow or the
-[small task](./small-task) flow.
-
-## How a run works
-
-An instruction to execute a **named plan** end to end is itself the
-authorization for the autonomous run:
-
-```text
-Execute all tasks in plan agent-os/specs/<PLAN-FOLDER> end to end under PREVC —
-this authorizes a full autonomous run.
-Propose a lane table per phase; parallelize independent lanes,
-serialize lanes sharing a file. Use recommended subagents.
-When all tasks land, run the code review and architecture review in parallel
-over the diff; both must pass with zero critical/blocking issues.
-Stop only at the final awaiting_confirmation for the whole spec.
-```
-
-The run executes every task without per-task approval and stops **once**, at
-`awaiting_confirmation` for the whole spec. It halts mid-run only for a real
-blocker: a task that needs operator/live action (physical machine,
-credential, real traffic), a scope change, push/deploy, or an unrecoverable
-validation failure.
-
-Without a named-plan instruction, the normal gate applies: `/prevc prepare`
-proposes the plan, stops at `awaiting_plan_approval`, and `/prevc run`
-authorizes Execute.
+1. **Exclusive file ownership:** every file scheduled for modification belongs to exactly one write-capable lane at a time. If two tasks require edits to the same module, the `scheduler` serializes them.
+2. **Ephemeral subagents vs. persistent Maestri team:**
+   - **Native subagents (`tasks[]`):** spawned by the `scheduler` via the `task` tool inside the OMP runtime for discrete tasks (such as TDD implementation of a file or executing a test shard).
+   - **Persistent Maestri team (`/maestri-team`):** a ten-role team operating in dedicated terminals within the Maestri canvas, enabling persistent collaboration among specialists with pre-configured tool restrictions (e.g. read-only reviewers).
+3. **Structured communication:** agents synchronize interfaces and blocking prerequisites through structured messages without manual polling.
+4. **Two-tiered validation:** each lane runs local checks (`--mode local`). Upon reconciliation, the `scheduler` runs the comprehensive gate (`--mode full`) against the consolidated working tree.
 
 ## The lane table
 
-Before dispatching, the scheduler builds a lane table. Each lane declares
-file ownership — **one write-capable lane per file at a time**:
+Prior to dispatching any concurrent batch, the `scheduler` constructs a lane dependency and ownership matrix:
 
-```text
-| Lane | Objective             | Ownership (files)      | Dep  | Capability |
-| L1   | Authorization layer   | authorization/, routes/| —    | implementer |
-| L2   | Persistence layer     | area_bindings/sql_*.py | —    | implementer |
-| L3   | Tests for L1 + L2     | tests/...              | L1,2 | test-runner |
-```
+| Lane | Objective | Ownership (files) | Dependencies | Capability |
+|---|---|---|---|---|
+| L1 | Authorization service | `src/auth/service.py` | — | `implementer` |
+| L2 | Storage repository | `src/storage/repository.py` | — | `implementer` |
+| L3 | Integration test suite | `tests/test_integration.py` | L1, L2 | `test-runner` |
 
-Ownership that crosses = lanes that are **not** independent — serialize or
-merge them into a single lane. It is a prompt rule, not a lock: two lanes on
-the same file silently overwrite each other.
+Mutually independent lanes (L1 and L2) execute in the same batch. Lane L3 waits for L1 and L2 artifacts to settle and reconcile before beginning integration testing.
 
-## Specific and experimental example: four modules
+## Dispatching via the `task` tool
 
-The following example illustrates the OMP-native `task` shape and test
-partitioning. The file names, agents, shards, and outputs are illustrative, not
-measurements or a universal recipe.
-
-### 1. Concurrent dispatch through `task`
+The `scheduler` builds the dispatch payload naming explicit subagent profiles:
 
 ```json
 {
-  "context": "Refactor four independent domains without shared files.",
+  "context": "# Objective: Decouple storage and authorization while maintaining strict boundaries.",
   "tasks": [
-    { "name": "AuthShard", "agent": "implementer", "task": "Refactor auth schemas and run its focused tests." },
-    { "name": "BillingShard", "agent": "implementer", "task": "Refactor billing schemas and run its focused tests." },
-    { "name": "CatalogShard", "agent": "implementer", "task": "Refactor catalog schemas and run its focused tests." },
-    { "name": "NotificationShard", "agent": "implementer", "task": "Refactor notification schemas and run its focused tests." }
+    {
+      "name": "AuthLane",
+      "agent": "implementer",
+      "task": "Implement authorization service in src/auth/service.py and run pytest tests/test_auth.py."
+    },
+    {
+      "name": "StorageLane",
+      "agent": "implementer",
+      "task": "Refactor database queries in src/storage/repository.py and run pytest tests/test_storage.py."
+    }
   ]
 }
 ```
 
-### 2. Observable evidence trail (illustrative format)
+## Completion tracking and reconciliation
 
-Each lane returns a terminal envelope with real output when executed. This
-snippet shows only the shape:
-
-```text
-[AuthShard] completed in <time> -> focused tests: <result> (exit 0)
-[BillingShard] completed in <time> -> focused tests: <result> (exit 0)
-Reconciled tree: <count> shards, <count> file conflicts.
-Full gate: <result>.
-```
-
-### 3. Illustrative wall-clock calculation
-
-The formula explains how to measure a run; these values are synthetic:
+Each lane emits a structured completion receipt with its exit status and modified files list:
 
 ```text
-Reduction = (T_sequential - T_parallel) / T_sequential
-          = (128.0s - 32.0s) / 128.0s
-          = 75.0%  # example calculation, not a published result
+[AuthLane]    completed -> pytest tests/test_auth.py: 12 passed (exit 0)
+[StorageLane] completed -> pytest tests/test_storage.py: 8 passed (exit 0)
+Reconciliation: 2 lanes merged with 0 file conflicts.
+Full gate over reconciled tree: pass (Measured: 6/6 metrics evaluated).
 ```
 
-Measure the same plan in the target environment before comparing runs.
+## Time projection and operational bounds
 
-## Authorization
+When a plan is partitioned into independent tasks, execution duration is no longer the linear sum of task times, but bounded by the slowest lane plus reconciliation overhead:
 
-- **Manual mode:** `/prevc prepare <objective>` stops at
-  `awaiting_plan_approval`; after approval, `/prevc run` authorizes Execute.
-- **Autonomous mode:** an instruction to execute a named plan or spec end to
-  end is the authorization and stops once at `awaiting_confirmation`.
+```text
+T_total = max(T_L1, T_L2, ...) + T_reconcile
+```
 
-## Evidence and continuity
+This theoretical projection does not guarantee fixed acceleration: CPU contention, network latency, and model provider rate limits affect real throughput. Measure execution duration in your own environment before and after parallelization.
 
-The execution handoff records the plan, lane ownership, decisions, commands,
-outputs, exit codes, reconciliation result, and next step. OMP auto-delivers
-lane results and records the same trail without manual polling.
+## Operational boundaries
 
-## Measurement, not promise
+- **Shared files:** never dispatch parallel lanes that write to the same file.
+- **Process limits:** observe host memory and CPU bounds when sizing concurrent terminals or test shards.
+- **Git commits:** subagents never commit directly. The `scheduler` alone commits reconciled changes locally at the end of the PREVC cycle.
 
-The wall-clock formula above explains how to measure a run; it is not a
-performance guarantee. Repeat the comparison in the target project, record the
-environment and tree revision, and attach the evidence to the handoff.
+## What this proves and what it does not prove
 
-## Known limits
+- **What it proves:** lane isolation guarantees that tasks completed without mutual file contamination and that the reconciled result satisfied the full quality gate.
+- **What it DOES NOT prove:** successful parallel completion does not prove that subtle semantic regressions were avoided between modules. End-to-end integration tests during final reconciliation provide that verification.
 
-- File ownership is a prompt rule, not a lock. For real isolation between
-  colliding lanes, use [git worktrees](./portability).
-- `Ctrl+C` in the main session does not kill dispatched children; cancel
-  lanes through the harness.
-- Two schedulers in the **same folder** collide — schedulers do not share
-  ownership. Use different worktrees or machines.
-- A dense plan saturates capacity on its own; running several heavy plans at
-  once can hit provider limits without going faster.
+## Related documentation
+
+- [Maestri Team Guide](./maestri-team.md) — Operating persistent terminals on the canvas.
+- [Quality Gate](../concepts/quality-gate.md) — How the full gate assesses reconciled code.
+- [Skills and Agents](../reference/skills.md) — Reference for `implementer`, `scheduler`, and specialist roles.

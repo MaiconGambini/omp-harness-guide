@@ -4,12 +4,14 @@ sidebar_position: 1
 
 # Perguntas Frequentes
 
+As perguntas frequentes respondem às dúvidas operacionais e conceituais mais comuns sobre instalação, execução do ciclo PREVC e solução de problemas no Harness Oh My Pi.
+
 ## Instalação
 
 ### "O que preciso instalar?"
 
 Clone o repositório, revise `omp/agent/omp-port-manifest.json`, rode o
-validator e copie `omp/agent/*` para uma pasta limpa em `~/.omp/agent`. O site
+validador e copie `omp/agent/*` para uma pasta limpa em `~/.omp/agent`. O site
 não é uma dependência do runtime OMP.
 
 ### "`npm ci` falhou"
@@ -70,10 +72,37 @@ antes de repetir.
 
 ### "Quem confirma que o trabalho terminou?"
 
-Ninguém além do operador. A transição final
-(`awaiting_confirmation → complete`) exige `--operator-action confirm` e um
-`docs/harness/session-handoff.md` existente. Nenhum agent se autoconfirma.
+Por padrão, a confirmação depende exclusivamente do operador humano (`--operator-action confirm`) após revisar as evidências e o arquivo de handoff da sessão. Embora o harness suporte `autoConfirm` parametrizado por critérios objetivos de gate e evals, esse recurso é estritamente opt-in e permanece desligado por padrão.
 
+### "Por que o `autoConfirm` vem desligado por padrão?"
+
+Para evitar encerramentos prematuros baseados em evidência fraca ou incompleta. Quando agentes fecham tarefas sem validação humana, testes superficiais ou mocks parciais podem ser aceitos indevidamente. A autoconfirmação com critérios só deve ser habilitada em pipelines específicos e exige que todas as métricas críticas estejam medidas e verdes.
+
+### "O gate deu pass com poucas métricas medidas. Isso prova que o código está pronto?"
+
+Não. O gate é um sinal de prontidão, não uma garantia absoluta de ausência de falhas. O gate imprime `Measured: N/M` e emite um alerta explícito quando menos da metade das métricas configuradas foi de fato executada. Um resultado `pass` com baixa cobertura de medição apenas indica que os poucos testes rodados não falharam; verificações essenciais podem estar indisponíveis ou não configuradas.
+
+### "Qual a diferença entre métricas `unavailable`, `not_configured` e `not_applicable`?"
+
+- **`unavailable`:** a ferramenta, linter ou comando de teste não foi encontrado no ambiente ou falhou na execução preliminar.
+- **`not_configured`:** a métrica pertence ao catálogo do harness, mas o projeto não declarou thresholds ou regras para ela na configuração de qualidade.
+- **`not_applicable`:** o detector de stack identificou que a tecnologia não existe no projeto (por exemplo, análise de TypeScript em um repositório exclusivamente Python).
+
+### "O que acontece quando o fixLoop se esgota?"
+
+O loop de autocorreção possui um limite padrão de três tentativas (`fixLoop.maxAttempts = 3`). Caso as tentativas se esgotem sem resolver a falha, o harness gera um aviso detalhado e registra os erros pendentes no arquivo de progresso. A sessão não é abortada destrutivamente: o controle retorna ao operador para inspecionar a causa raiz e redefinir o plano.
+
+### "O comando `/maestri-team` consome muitas sessões ou tokens?"
+
+O `/maestri-team` apenas provisiona as definições de papéis especializados em terminais dedicados. Você pode rodar `/maestri-team --dry-run` para auditar papéis e ferramentas sem nenhum custo. Cada especialista atua somente quando convocado para uma tarefa específica da sua área. Em caso de acúmulo de contexto em terminais ociosos, a opção `--reset` reinicia os papéis sem perder o histórico do workspace.
+
+### "Como funciona o reset de contexto e quando devo usá-lo?"
+
+O reset de contexto limpa o histórico da conversa mantendo o estado durável intacto no disco (arquivos de progresso e lifecycle do PREVC). Ele deve ser acionado quando a janela de contexto acumula ruído de depuração ou quando o orçamento de tokens se esgota. Como o handoff consolida a próxima ação, a nova sessão recomeça sem redescobrir o projeto.
+
+### "Posso usar o harness em um projeto sem Git?"
+
+Não. O Git é um pré-requisito fundamental. O PREVC, a inspeção de diffs no gate, o controle de lanes em worktrees e a auditoria de arquivos alterados dependem da árvore de objetos do Git para delimitar o escopo e calcular métricas de fluxo.
 ## Erros
 
 ### "A verificação do projeto falha mas o projeto funciona"

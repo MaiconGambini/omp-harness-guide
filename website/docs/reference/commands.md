@@ -4,8 +4,7 @@ sidebar_position: 1
 
 # Comandos
 
-Comandos globais disponíveis no Oh My Pi após a instalação do pacote público,
-instalados em `~/.omp/agent/commands/`. Há duas camadas:
+A referência de comandos reúne os comandos globais e scripts utilitários disponíveis no Oh My Pi após a instalação do pacote público em `~/.omp/agent/commands/`. Há duas camadas:
 
 - **Comandos compartilhados pelo contrato:** `/prevc`, `/quality`, `/refine`,
   `/harness-session-start` e `/harness-clean-handoff` expressam lifecycle,
@@ -13,9 +12,9 @@ instalados em `~/.omp/agent/commands/`. Há duas camadas:
   metodológico.
 - **Comandos e superfícies nativas do OMP:** `/planner`, `/harness-status`,
   `/score`, `/capabilities`, `/fallback`, `/trace`, `/harness-security-scan`,
-  `/harness-mcp-inventory` e `/harness-context-budget` usam o scheduler,
-  observabilidade ou coordenação do runtime Oh My Pi. Não há comandos públicos
-  `omp:*`.
+  `/harness-mcp-inventory`, `/harness-context-budget`, `/maestri-team` e `/agent`
+  usam o scheduler, observabilidade ou coordenação do runtime Oh My Pi. Não há
+  comandos públicos `omp:*`.
 
 Os nomes começam com `/` quando invocados no chat do Oh My Pi (por exemplo,
 `/prevc`). A lista abaixo agrupa os comandos por função; a separação acima
@@ -31,21 +30,28 @@ indica a camada a que cada comando pertence.
 | `/quality` | Antes de um commit (ou a qualquer momento) | Roda `harness-quality-gate.mjs --mode $ARGUMENTS` (padrão `local`; use `full` antes de commit) e `harness-risk-router.mjs`; imprime a tabela de métricas e o tier com a razão. Exit 1 = corrija a métrica, nunca relaxe o threshold; exit 2 = blocker do harness. Métrica indisponível ou relatório ausente/desatualizado = gap nomeado, não pass |
 | `/refine` | Depois do Judge, ou para registrar nota do operador com `--note` | Dispara o refiner read-only sobre a janela de findings e roteia propostas por blast radius; não escreve nada. Com `--note`, registra um finding `operator_note` |
 
+### Coordenação, time e persona
+
+| Comando | Argumentos | Quando usar | O que faz |
+|---|---|---|---|
+| `/maestri-team` | `[--dry-run] [--apply] [--reset] [--root <dir>] [--specialist <backend-infra\|vue>] [--model <id>] [--thinking <level>]` | Orquestração multi-agente no Maestri | Provisiona ou reutiliza o time padrão de dez papéis no workspace ativo do Maestri via `skill://maestri-workspace-team` e `harness-maestri-team.mjs`. Exige consentimento explícito do operador para recrutar terminais |
+| `/agent` | `<nome-do-perfil> \| clear \| reset` | Alternar ou inspecionar o papel ativo no OMP | Adota o perfil de agente em `~/.omp/agent/agents/<nome>.md`, gravando o papel ativo e ajustando instruções e capabilities da sessão |
+
 ### Comandos nativos do OMP
 
-| Comando | Quando usar | O que faz |
-|---|---|---|
-| `/planner` | Planejar trabalho significativo no OMP | Pipeline size-gated do papel Planning do scheduler: `wayfinder` para esforços grandes, `grill-with-docs` em AUTO e `to-tickets` para decompor; termina em `awaiting_plan_approval` |
-| `/harness-spec` | Feature média ou grande no OMP | Cria ou propõe uma spec Agent OS em `agent-os/specs/<slug>/` a partir dos templates globais |
-| `/propose-skill` | Processo recorrente no histórico do OMP | Analisa sequências repetidas de comandos e propõe uma skill gerada. A ativação (`--activate`) é manual, valida a candidata e instala somente após a ação explícita do operador; nunca há autoativação |
-| `/trace` | Inspecionar o rastreio nativo do OMP | Verifica (`--verify`), lê (`--read`), poda (`--prune`) ou grava (`--record`) o envelope redigido de eventos `pi.on` |
-| `/harness-status` | Verificar readiness | Imprime git, fase PREVC durável, handoff, orçamento de contexto, segurança e as superfícies observáveis; cada superfície ausente vira `unavailable` nomeado |
-| `/score` | Ver a pontuação agregada | Mostra o agregado 0-10 derivado dos relatórios de gate mais recentes; nunca é entrada de gate |
-| `/capabilities` | Conferir fatos de capacidade | Resume os fatos multimodais por papel de modelo a partir do probe de capacidades |
-| `/fallback` | Conferir eventos de fallback | Resume o log de eventos de fallback de provedor |
-| `/harness-security-scan` | Auditar superfície de segurança | Escaneia o harness e o projeto buscando riscos de supply-chain e secrets; resume PASS/WARN/FAIL sem imprimir valores |
-| `/harness-mcp-inventory` | Inventariar MCPs | Lista servidores MCP, detecta drift e sinaliza chaves com secret sem expor valores |
-| `/harness-context-budget` | Auditar carga de contexto | Reporta o orçamento de contexto de skills, comandos e MCPs; recomenda lazy-loading |
+| Comando | Argumentos | Quando usar | O que faz |
+|---|---|---|---|
+| `/planner` | `<objetivo>` | Planejar trabalho significativo no OMP | Pipeline size-gated do papel Planning do scheduler: `wayfinder` para esforços grandes, `grill-with-docs` em AUTO e `to-tickets` para decompor; termina em `awaiting_plan_approval` |
+| `/harness-spec` | `<slug ou objetivo>` | Feature média ou grande no OMP | Cria ou propõe uma spec Agent OS em `agent-os/specs/<slug>/` a partir dos templates globais |
+| `/propose-skill` | `[--activate <nome>]` | Processo recorrente no histórico do OMP | Analisa sequências repetidas de comandos e propõe uma skill gerada. A ativação (`--activate`) é manual, valida a candidata e instala somente após a ação explícita do operador; nunca há autoativação |
+| `/trace` | `--verify \| --read \| --prune \| --record` | Inspecionar o rastreio nativo do OMP | Verifica (`--verify`), lê (`--read`), poda (`--prune`) ou grava (`--record`) o envelope redigido de eventos `pi.on` |
+| `/harness-status` | *(nenhum)* | Verificar readiness operacional | Imprime git, fase PREVC durável, handoff, orçamento de contexto, segurança e as superfícies observáveis; cada superfície ausente vira `unavailable` nomeado |
+| `/score` | *(nenhum)* | Ver a pontuação agregada | Mostra o agregado 0-10 derivado dos relatórios de gate mais recentes; nunca é entrada de gate |
+| `/capabilities` | *(nenhum)* | Conferir fatos de capacidade | Resume os fatos multimodais por papel de modelo a partir do probe de capacidades |
+| `/fallback` | *(nenhum)* | Conferir eventos de fallback | Resume o log de eventos de fallback de provedor |
+| `/harness-security-scan` | *(nenhum)* | Auditar superfície de segurança | Escaneia o harness e o projeto buscando riscos de supply-chain e segredos; resume PASS/WARN/FAIL sem imprimir valores |
+| `/harness-mcp-inventory` | *(nenhum)* | Inventariar MCPs | Lista servidores MCP, detecta drift e sinaliza chaves com segredo sem expor valores |
+| `/harness-context-budget` | *(nenhum)* | Auditar carga de contexto | Reporta o orçamento de contexto de skills, comandos e MCPs; recomenda lazy-loading |
 
 ### Sessão e projeto
 
@@ -56,7 +62,6 @@ indica a camada a que cada comando pertence.
 | `/harness-init` | Primeira vez em um projeto | Audita as camadas do harness sem escrever nada; produz um gap report com correções recomendadas |
 | `/harness-bootstrap` | Instalar o pacote completo do harness | Propõe o pacote completo (AGENTS.md, feature_list.json, docs/harness, agent-os) e escreve apenas após confirmação |
 | `/harness-standards` | Antes de planejar ou implementar | Detecta o stack e carrega standards de projeto e globais; devolve perfis de risco, validação, permissão e skills aplicáveis |
-
 
 ## Validar e instalar o pacote público
 
@@ -74,21 +79,50 @@ Copy-Item -Path ".\omp\agent\*" -Destination $target -Recurse -Force
 
 ## Scripts do harness
 
-Os scripts ficam em `~/.omp/agent/scripts/` e executam com Node:
+Os utilitários Node ficam em `~/.omp/agent/scripts/` e executam diretamente:
 
-```powershell
-node ~/.omp/agent/scripts/harness-prevc-state.mjs init|transition|inspect
-node ~/.omp/agent/scripts/harness-quality-gate.mjs --mode local|full
-node ~/.omp/agent/scripts/harness-risk-router.mjs
-node ~/.omp/agent/scripts/harness-trace.mjs --verify|--read|--prune|--record
-node ~/.omp/agent/scripts/harness-findings.mjs --window|--json
-node ~/.omp/agent/scripts/harness-score.mjs
-node ~/.omp/agent/scripts/harness-status.mjs
-node ~/.omp/agent/scripts/harness-redteam-scan.mjs
-node ~/.omp/agent/scripts/harness-security-scan.mjs
-node ~/.omp/agent/scripts/harness-briefing.mjs
+| Script | Uso representativo | Propósito |
+|---|---|---|
+| `harness-prevc-state.mjs` | `node ~/.omp/agent/scripts/harness-prevc-state.mjs init\|transition\|inspect` | Gerencia e persiste a fase durável do ciclo de vida PREVC |
+| `harness-quality-gate.mjs` | `node ~/.omp/agent/scripts/harness-quality-gate.mjs --mode local\|full` | Executa o gate medido, calcula cobertura de medição e gera relatório |
+| `harness-risk-router.mjs` | `node ~/.omp/agent/scripts/harness-risk-router.mjs` | Avalia o blast radius do diff e determina o tier de revisão (`auto`, `sampling`, `full`) a partir do risco (`low`, `medium`, `high`) |
+| `harness-flow-metrics.mjs` | `node ~/.omp/agent/scripts/harness-flow-metrics.mjs --root <repo> --since 28d --json` | Coleta métricas de fluxo de código: commits, reversões e correções posteriores |
+| `harness-maestri-team.mjs` | `node ~/.omp/agent/scripts/harness-maestri-team.mjs --dry-run\|--apply [--reset]` | Recruta e gerencia idempotentemente o time de dez papéis no Maestri |
+| `harness-coverage-label.mjs` | *(módulo de suporte / importação)* | Calcula rótulo de cobertura de medição e sinaliza minoria de métricas medidas |
+| `harness-delivery-preflight.mjs` | `node ~/.omp/agent/scripts/harness-delivery-preflight.mjs --root <repo>` | Valida pré-requisitos de entrega e autorização sem realizar deploy |
+| `harness-project-onboarding.mjs` | `node ~/.omp/agent/scripts/harness-project-onboarding.mjs --root <repo>` | Executa o onboarding automático de perfil de projeto e checagem de harness |
+| `harness-project-profile.mjs` | `node ~/.omp/agent/scripts/harness-project-profile.mjs [--detect] [--write] [--publish-cerebro] [--json] [--root <dir>]` | Extrai e mantém o `agent-os/project-profile.json` com stack, comandos e políticas de loop |
+| `harness-trace.mjs` | `node ~/.omp/agent/scripts/harness-trace.mjs --verify\|--read\|--prune\|--record` | Gerencia o stream redigido de auditoria e telemetria de eventos |
+| `harness-status.mjs` | `node ~/.omp/agent/scripts/harness-status.mjs` | Relata readiness de git, PREVC, handoff, orçamento de contexto e guardrails |
+| `harness-size-gate.mjs` | `node ~/.omp/agent/scripts/harness-size-gate.mjs` | Avalia tamanho de lote de mudanças para prevenir PRs hipertrofiados |
+| `harness-skill-lint.mjs` | `node ~/.omp/agent/scripts/harness-skill-lint.mjs` | Valida formatação e conformidade estrutural de skills instaladas |
+
+### Exemplo real de execução: métricas de fluxo
+
+Ao inspecionar a estabilidade do fluxo de desenvolvimento sem caminhos privados:
+
+```bash
+node ~/.omp/agent/scripts/harness-flow-metrics.mjs --root <projeto> --since 28d --json
 ```
 
+Saída real retornada pelo script:
+
+```json
+{
+  "status": "ok",
+  "root": "<projeto>",
+  "since": "28d",
+  "definition": "fixFollowups = commit fix/hotfix/bugfix que altera arquivo mexido por outro commit nos 7 dias anteriores (proxy de correção posterior; não prova merge).",
+  "weeks": [],
+  "totals": {
+    "commits": 0,
+    "reverts": 0,
+    "fixFollowups": 0,
+    "revertRatio": 0,
+    "followupRatio": 0
+  }
+}
+```
 
 ## Passo a passo dos comandos principais
 
@@ -109,134 +143,36 @@ node ~/.omp/agent/scripts/harness-briefing.mjs
 
 - Aceita aprovação explícita do operador em linguagem normal ou `/prevc run`; não exige goal ID.
 - Uma instrução do operador para executar um plano ou spec **nomeado** de ponta a ponta já é a autorização do run autônomo: sem aprovação por task; o run para uma única vez em `awaiting_confirmation` para o spec inteiro.
-- Automatiza Execute → Validate → Judge dentro do escopo aprovado. O `scheduler` despacha lanes via `task` (uma onda `tasks[]`) com `hub`.
+- Automatiza Execute → Validate → Judge dentro do escopo aprovado. O `scheduler` despacha lanes via `task` (uma onda `tasks[]`).
 - Preserva os caminhos de risco `low`, `medium`, `high` e `untrusted`: medium+ exige evidência de contexto/segurança ou skip documentado; high/untrusted exige reconhecimento explícito de risco antes de executar.
 - Nunca faz push, deploy, troca de branch ou operações Git remotas automaticamente — o operador autoriza cada uma.
 
-### 2. Auditar um projeto — `/harness-init`
+### 2. Time no Maestri — `/maestri-team`
 
 ```text
-/harness-init
+/maestri-team
 ```
 
-- Executa a skill global `harness-initializer`.
-- Detecta a raiz do repo, instruções raiz, estado de progresso, feature state, caminho de startup, camada de Judge/avaliação, skills de harness, postura de segurança, higiene de MCP, orçamento de contexto e worktrees.
-- Produz um gap report não-mutatório com correções recomendadas.
-- Não cria nem edita arquivos a menos que o usuário aprove uma correção específica.
+- Invoca `harness-maestri-team.mjs` com `--dry-run` para inspecionar os agentes existentes no canvas e exibir o relatório prévio.
+- Requer consentimento explícito do operador para rodar com `--apply`, evitando abertura desnecessária de novas sessões de modelo faturadas.
+- Suporta `--reset` para enviar `/new` a cada terminal reutilizado sem matar os processos ou perder restrições de permissão `--tools`.
 
-### 3. Instalar o harness completo — `/harness-bootstrap`
+### 3. Seleção de persona — `/agent`
 
 ```text
-/harness-bootstrap
+/agent spec-lead
 ```
 
-- Executa a skill global `harness-bootstrap`.
-- Sempre propõe o pacote completo: `AGENTS.md`, `feature_list.json`, `docs/harness/{progress,session-handoff,sprint-contract}.md`, `docs/{ARCHITECTURE,PRODUCT,RELIABILITY}.md`, `agent-os/judges/project-judge.md`, `agent-os/standards/`, `agent-os/quality-thresholds.json` e `agent-os/specs/_template/`.
-- Primeiro audita o repo atual e descobre o caminho de startup.
-- Mostra os arquivos exatos a criar, mesclar ou pular e pede confirmação explícita antes de escrever qualquer coisa.
+- Valida a existência de `~/.omp/agent/agents/spec-lead.md`, registra o nome no marcador de persona ativa e adota as instruções do perfil na sessão.
+- Com `/agent clear`, remove o marcador ativo e retorna a sessão às instruções padrão do harness.
 
-### 4. Iniciar a sessão — `/harness-session-start`
+## O que isto prova e o que não prova
 
-```text
-/harness-session-start
-```
+- **O que prova:** comandos fornecem pontos de entrada uniformes para o ciclo de vida PREVC, verificações estáticas, auditorias sem efeito colateral e coordenação entre agentes. Os scripts executam inspeções determinísticas sobre o estado do repositório.
+- **O que NÃO prova:** a invocação de um comando não garante por si só que o código implementado esteja correto ou livre de regressões. O comando `/quality` com veredito favorável indica aprovação nas métricas configuradas, mas métricas em estado `unavailable` ou `not_configured` representam lacunas não medidas, e não evidência de correção.
 
-- Executa a skill global `harness-session-start` como operação de rotina direta, não como trabalho de PREVC.
-- Lê o contexto global em `~/.omp/agent/docs/context.md` (ou reporta o gap), a fase PREVC durável com `harness-prevc-state.mjs inspect --json`, o feature state (`feature_list.json`, `agent-os/specs/*/` ou `.specs/features/*/tasks.md`) e o handoff anterior (`docs/harness/session-handoff.md`).
-- Descobre o comando de startup e o roda se for seguro.
-- Aplica WIP=1 quando há estado durável.
-- Termina declarando: Active task, AC (critérios observáveis). Se o startup falhar, registra o erro exato no arquivo de progresso e para.
+## Páginas relacionadas
 
-### 5. Fechar a sessão — `/harness-clean-handoff`
-
-```text
-/harness-clean-handoff
-```
-
-- Executa a skill global `harness-clean-handoff` como subrotina de handoff do PREVC.
-- Coleta evidência, blockers, notas de progresso, um session handoff, resultados de verificação aprovada e git status.
-- Apenas o PREVC escreve transições de ciclo de vida após o desfecho do operador.
-- Quando invocado diretamente, devolve apenas um relatório de handoff: não marca feature state, não infere confirmação nem afirma conclusão.
-
-### 6. Planejar trabalho significativo — `/planner`
-
-```text
-/planner <objetivo>
-```
-
-- Executa o pipeline de planejamento no papel de Planning do scheduler: size-gate (`wayfinder` para esforços grandes), refinamento (`grill-with-docs` em AUTO) e decomposição (`to-tickets`).
-- Escreve os artefatos canônicos em `agent-os/specs/<slug>/` antes da aprovação.
-- Exibe o plano revisável e para em `awaiting_plan_approval`; não edita o produto antes da aprovação.
-
-
-### 7. Qualidade — `/quality`
-
-```text
-/quality
-/quality full
-```
-
-- Roda o gate medido (`--mode local` por padrão; `--mode full` antes de commit) e o risk router.
-- Ambos leem `agent-os/quality-thresholds.json` do projeto.
-- Exit 1 = corrija a métrica; exit 2 = blocker do harness; métrica `unavailable` = gap nomeado, nunca pass.
-- Para suites grandes, faça sharding entre agents `test-runner` paralelos antes de ler cobertura.
-
-### 8. Refine — `/refine`
-
-```text
-/refine
-/refine --note "<o que corrigi à mão>"
-```
-
-- Reúne a janela de findings, o gate mais recente e o ledger de regras; despacha o `refiner` read-only e encaminha propostas por blast radius.
-- Nunca propõe editar `~/.omp/agent/**` ou os scripts do harness; propostas têm como alvo apenas `agent-os/standards/`.
-- `--note` registra um finding `operator_note` pelo caminho de escrita única e termina.
-
-### 9. Rastreio — `/trace`
-
-```text
-/trace
-```
-
-- Verifica a cadeia de hash do envelope (`harness-trace.mjs --verify`), lê registros recentes, poda por retenção ou grava registros de lifecycle a partir dos comandos donos.
-- O stream só é evidência de auditoria após `--verify` passar.
-
-## Comandos rápidos (cheat-sheet)
-
-```text
-# Projeto desconhecido: auditar sem escrever
-/harness-init
-
-# Projeto sem harness: propor instalação completa
-/harness-bootstrap
-
-# Início de uma sessão normal
-/harness-session-start
-
-# Preparar trabalho significativo
-/prevc prepare <objetivo>
-
-# Aprovar o plano preparado (linguagem natural) e executar
-/prevc run
-
-# Execução autônoma: instrução para executar um plano/spec nomeado de ponta a
-# ponta já é a autorização — sem /prevc run separado, sem aprovação por task
-
-# Pausar ou encerrar com contexto durável
-/harness-clean-handoff
-
-# Planejar trabalho significativo
-/planner <objetivo>
-
-# Qualidade, refine e observabilidade
-/quality              # gate medido + risk router (/quality full antes de commit)
-/refine               # fase Refine pós-Judge (ou --note "<o que corrigi à mão>")
-/score                # agregado 0-10 derivado dos gates mais recentes
-/trace                # verificar/ler/podar o rastreio redigido de eventos
-
-# Diagnósticos globais
-/harness-status
-/harness-security-scan
-/harness-context-budget
-/harness-mcp-inventory
-```
+- [Skills e Agentes](./skills.md) — Relação completa de perfis de subagente e capacidades lazy-loaded.
+- [Artefatos do Harness](./artifacts.md) — Documentação dos esquemas de estado, contratos e recibos.
+- [Equipe no Maestri](../guides/maestri-team.md) — Guia de operação da equipe multi-agente de dez papéis.

@@ -6,7 +6,7 @@ sidebar_position: 1
 
 > **Estado PREVC:** Fast path simplificado — até 3 arquivos, escopo determinístico, sem cerimônia pesada de spec.
 
-Este guia demonstra o fluxo rápido para tarefas pontuais de engenharia (como bugfixes cirúrgicos de 2 minutos), mantendo a integridade de evidências sem a sobrecarga de um planejamento cerimonial completo.
+O guia de tarefa pequena apresenta o fluxo ágil (fast path) para correções pontuais em até três arquivos, preservando a exigência de testes e evidências sem sobrecarga burocrática.
 
 ## Por que o modo rápido dispensa a cerimônia do PREVC?
 
@@ -79,3 +79,8 @@ O agente registra a conclusão na ferramenta `todo` e gera a evidência mínima 
 
 - Não declarar sucesso sem saída observável.
 - Não expandir o escopo para autenticação, banco ou deploy.
+
+## O que isto prova e o que não prova
+
+- **O que prova:** que a alteração cirúrgica foi reproduzida, corrigida sob WIP=1 e verificada com testes automatizados e checagem de tipos.
+- **O que não prova:** não substitui o ciclo formal do PREVC, a revisão arquitetural independente nem a execução do Quality Gate completo exigidos para mudanças de médio e alto risco.

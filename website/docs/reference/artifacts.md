@@ -4,57 +4,155 @@ sidebar_position: 3
 
 # Artefatos
 
-Arquivos que o harness lê e escreve durante o ciclo de vida.
+A referência de artefatos documenta os arquivos de governança, esquemas de configuração e relatórios duráveis que o harness utiliza durante o ciclo operacional para assegurar continuidade e rastreabilidade entre sessões.
 
-## Estado
+## Tabela de artefatos essenciais
 
-| Arquivo | Caminho | Propósito |
+| Artefato | Localização | Propósito |
 |---|---|---|
-| `AGENTS.md` | raiz | Regras do projeto, entry points |
-| `feature_list.json` | raiz | Fonte da verdade de WIP=1 |
-| `tasks.md` | raiz ou `.specs/features/*/` | Alternativa de feature state |
-| `progress.md` | `docs/harness/` | Progresso durável, blockers, decisões |
-| arquivo de fase durável | projeto (escrito por `harness-prevc-state.mjs`) | Fase durável do ciclo de vida |
-| `session-handoff.md` | `docs/harness/` | Transferência entre sessões |
-| `sprint-contract.md` | `docs/harness/` | Escopo, AC, plano de verificação |
-| `quality-thresholds.json` | `agent-os/` | Métricas, risk routing e chaves governantes |
-| `learned-rules.json` | `agent-os/` | Ledger local de regras ativas, conflitos e aposentadorias |
-| `security-contract.json` | `agent-os/` | Contrato de segurança: presença e evidência declarada (`authz_controls`) |
-| janela de findings | projeto | Janela append-only de findings tipados ligada ao gate |
-| recibo do Judge | projeto (arquivo datado) | Recibos do Judge (veredito, rubrica, critérios bloqueantes) |
-| envelope de trace | projeto | Envelope redigido do rastreio nativo (`pi.on`) |
-| `specs/<slug>/` | `agent-os/` | Spec, plan, verification, decisions e tickets |
+| `AGENTS.md` | raiz do projeto | Instruções, convenções de código e entry points do repositório |
+| `feature_list.json` | raiz do projeto | Fonte da verdade para execução estrita de WIP=1 |
+| `agent-os/prevc-autonomy.json` | `agent-os/` | Configurações de autonomia do PREVC, autoconfirmação (`autoConfirm`, desligada por padrão) e regras de gate |
+| `agent-os/project-profile.json` | `agent-os/` | Perfil detectado do projeto: stack, comandos de teste, linter e política de `fixLoop` |
+| `agent-os/quality-thresholds.json` | `agent-os/` | Chaves governantes de métricas e roteamento de risco (sem números fixos no guia) |
+| `docs/review.md` | `docs/` (ou por área) | Falhas críticas reais mapeadas, diretrizes do revisor e log de defeitos escapados |
+| `.github/pull_request_template.md` | `.github/` | Template de PR com Tier de risco, Testing, Como reverter e Responsável |
+| Recibos do Judge | diretório de relatórios | Vereditos tipados (`accept`, `reject`, `revise`), rubrica avaliada e links de evidência |
+| Relatórios do Gate | diretório de relatórios | Status das métricas, cobertura de medição (`measurementCoverage`) e rótulo (`coverageLabel`) |
+| Handoff de sessão | `docs/harness/session-handoff.md` | Resumo durável de continuidade, blockers, progresso e próximas ações |
 
-## Feature list
+## Detalhamento dos artefatos estruturados
 
-Cada feature no `feature_list.json` usa os campos abaixo:
+### 1. Autonomia PREVC (`agent-os/prevc-autonomy.json`)
 
-| Campo | Descrição |
-|---|---|
-| `id` | Identificador único |
-| `priority` | Ordem de execução |
-| `area` | Área do projeto |
-| `title` | Nome curto |
-| `user_visible_behavior` | O que o usuário/agente vê quando funciona |
-| `dependencies` | IDs de features que devem ser concluídas antes |
-| `status` | `not_started`, `in_progress`, `passing` ou `blocked` |
-| `verification` | Comando que prova que funciona |
-| `evidence` | Output real capturado após verificação |
-| `notes` | Informação adicional |
+Controla o grau de autonomia do ciclo PREVC para evitar execuções desgovernadas.
+A autoconfirmação (`autoConfirm`) é estritamente opt-in e vem desativada por padrão.
 
-## Regras de status
+```json
+{
+  "schemaVersion": 1,
+  "autoConfirm": false,
+  "maxRevisionCycles": 3
+}
+```
 
-- Apenas UMA feature `in_progress` por vez.
-- `passing` exige `evidence` preenchida com output real.
-- `blocked` exige a causa exata no campo `evidence`.
-- Nenhuma feature `in_progress` com dependências não resolvidas.
+Quando desativado, o ciclo de vida interrompe obrigatoriamente a execução ao atingir
+a fase `awaiting_confirmation`, devolvendo o controle e a evidência acumulada para validação humana.
 
-## Ownership dos artefatos
+### 2. Perfil do projeto (`agent-os/project-profile.json`)
 
-- O PREVC é o único escritor da fase do ciclo de vida (arquivo de fase durável); transições inválidas são recusadas (exit 2) sem escrita.
-- Reviewers retornam records; o scheduler valida e grava cada arquivo de findings uma única vez.
-- O PREVC grava os recibos do Judge; `refine → awaiting_confirmation` exige veredito `accept`.
-- Refine lê findings e ledger, mas não escreve nenhum dos dois.
-- Regras aprovadas entram depois do código, em mudança separada, porque o rulebook permanece dentro do hash de fonte do gate.
-- Números governantes vivem em `quality-thresholds.json`, nunca na prosa.
-- O rastreio é gravado apenas pelo adaptador `harness-omp-trace.ts` e por `--record` explícito através do contrato compartilhado.
+Gerado e mantido pelo script `harness-project-profile.mjs` sob `agent-os/project-profile.json`. Registra os comandos canônicos
+de teste, lint, auditoria e a política de contenção de loops de correção (`fixLoop`).
+
+```json
+{
+  "schemaVersion": 1,
+  "stack": [
+    "node",
+    "typescript"
+  ],
+  "test": {
+    "command": "npm test",
+    "detected": true
+  },
+  "evals": {
+    "isolation": "process",
+    "detected": true
+  },
+  "ci": {
+    "provider": "github",
+    "detected": true
+  },
+  "delivery": {
+    "mode": "none",
+    "detected": true
+  },
+  "fixLoop": {
+    "maxAttempts": 3,
+    "escalateOn": [
+      "attempts_exhausted",
+      "secret_or_credential",
+      "production_deploy",
+      "scope_change",
+      "dependency_cooldown"
+    ],
+    "detected": true
+  }
+}
+```
+
+O parâmetro `fixLoop.maxAttempts` define o teto padrão de 3 tentativas para correção
+automática de falhas em uma lane. Ao esgotar as tentativas, o sistema emite um aviso estruturado
+e registra o bloqueador para decisão do operador, sem travar indefinidamente a sessão.
+
+### 3. Thresholds de qualidade (`agent-os/quality-thresholds.json`)
+
+Define as chaves das métricas governantes avaliadas pelo `harness-quality-gate.mjs`
+e as regras de classificação de risco do `harness-risk-router.mjs`.
+
+- **Métricas governantes:** avaliadas por chave no projeto (por exemplo, `eval_regressions`,
+  `authz_controls`, `coverageLabel`, `measurementCoverage`). O valor de cada threshold é configurado
+  localmente no repositório de acordo com o contexto operacional.
+- **Roteamento de risco:** classifica diffs entre os níveis de risco `risk:low`, `risk:medium` e `risk:high`
+  (mapeados nos tiers de revisão `auto`, `sampling` e `full`) com base no volume de linhas e criticidade dos arquivos afetados.
+
+### 4. Code Review por área (`docs/review.md`)
+
+Documenta o aprendizado cumulativo e os padrões de falha reais observados no codebase.
+Cada área crítica do sistema deve manter seu próprio `review.md` estruturado em três seções:
+
+1. **Falhas críticas reais observadas:** lista de bugs graves ou incidentes que já ocorreram na área.
+2. **Regras de verificação do revisor:** verificações obrigatórias que o agente revisor (`code-reviewer`)
+   deve inspecionar antes de emitir parecer.
+3. **Log de defeitos escapados:** histórico conciso de regressões que passaram pelo review e as lições aprendidas.
+
+### 5. Template de Pull Request (`.github/pull_request_template.md`)
+
+Padroniza a entrega de alterações com rastreabilidade explícita:
+
+- **Tier e Risco:** indicação do tier de revisão (`auto`, `sampling`, `full`) e do nível de risco (`low`, `medium`, `high`).
+- **Testing:** evidência objetiva e comando reproduzível que valida o comportamento.
+- **Como reverter:** instruções claras de rollback caso ocorra incidente em produção.
+- **Responsável:** identificação do operador responsável pelo merge e acompanhamento.
+
+### 6. Relatório do Gate e Cobertura de Medição
+
+O relatório gerado pelo gate de qualidade não expressa apenas sucesso ou falha;
+ele expõe a honestidade da medição por meio dos seguintes campos:
+
+- **Status das métricas:** cada métrica é rotulada como `pass`, `fail`, `observe`,
+  `unavailable`, `not_configured` ou `not_applicable`.
+- **`measurementCoverage`:** razão entre as métricas efetivamente medidas (`pass`, `fail`, `observe`)
+  e o total aplicável. O gate imprime no terminal `Measured: N/M` e emite alerta explícito
+  quando menos da metade das métricas configuradas foi medida (`unmeasuredMajority: true`).
+- **`coverageLabel`:** classificação categórica da abrangência da medição (`unmeasured`,
+  `smoke_only`, `partial`, `standard` ou `comprehensive`).
+
+### 7. Recibo do Judge
+
+Emitido ao final da fase Judge pelo subagente `judge`. Contém o veredito formal,
+a rubrica de critérios avaliados e a comprovação dos critérios de aceitação.
+O ciclo PREVC só transiciona para a confirmação quando o recibo traz veredito `accept`.
+
+## Regras de posse e concorrência
+
+1. **Escritor único de fase:** apenas `harness-prevc-state.mjs` atualiza a fase persistente do PREVC.
+   Transições manuais ou inválidas são recusadas.
+2. **Sem escrita direta de findings:** subagentes revisores retornam JSON estruturado ao scheduler,
+   que valida o conteúdo antes de persistir o lote de findings.
+3. **WIP=1 estrito:** em qualquer instante, no máximo uma unidade de trabalho deve constar como
+   `in_progress` no `feature_list.json`.
+
+## O que isto prova e o que não prova
+
+- **O que prova:** a persistência desses artefatos comprova que a auditoria foi executada,
+  que as métricas declaradas foram consultadas e que existe trilha reproduzível para o rollback e para a entrega.
+- **O que NÃO prova:** a existência dos arquivos de configuração não garante que as regras neles
+  descritas sejam suficientes para cobrir todos os cenários de risco. A eficácia dos thresholds
+  depende da calibração contínua e da inclusão de testes de regressão reais.
+
+## Páginas relacionadas
+
+- [Comandos](./commands.md) — Comandos que inspecionam e atualizam os artefatos.
+- [Estrutura do Repositório](./repository-structure.md) — Onde cada artefato reside na árvore de diretórios.
+- [Qualidade e Gate](../concepts/quality-gate.md) — Como as métricas e thresholds operam na prática.

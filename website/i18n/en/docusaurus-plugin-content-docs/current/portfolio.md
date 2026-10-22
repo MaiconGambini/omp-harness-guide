@@ -4,43 +4,44 @@ sidebar_position: 2
 
 # OMP Portfolio
 
-This record describes the problem, method, implementation, and evidence of the
-public Oh My Pi core. It presents no performance numbers without reproducible
-measurement.
+This document describes the problem, methodology, implementation, and evidentiary basis of the public Oh My Pi core. It documents verifiable engineering mechanisms without claiming performance metrics lacking reproducible measurement.
 
 ## Problem
 
-The PREVC contract needed to operate on OMP's native primitives without
-publishing private state, runtime evidence, or unverified capabilities. The
-challenge was preserving scope, continuity, and human approval while the
-runtime works with agents and lanes.
+The PREVC contract needed to operate on OMP native primitives without publishing private state, credentials, customer data, or unverified capabilities. The core challenge was maintaining rigorous scope boundaries, cognitive focus (WIP=1), code traceability, and human approval governance while the runtime dispatches multiple agents and parallel execution lanes.
 
 ## Method
 
-PREVC remains the common contract: seven steps grouped into four phases, WIP=1,
-operator approval, executable validation, a read-only Judge, non-writing Refine,
-and explicit confirmation. OpenCode is treated as the methodological and
-continuity adapter; OMP provides the native engine.
+PREVC remains the shared engineering contract:
+- Seven steps grouped into four operational phases.
+- Bounded focus on a single active unit (WIP=1).
+- Semantic risk classification and prior plan approval.
+- Quality Gate measured with deterministic code and explicit coverage reporting (`Measured: N/M`).
+- Layered code review with an independent reviewer from a competing model family.
+- Read-only Judge evaluation and Refine proposing improvements without write permissions.
+- Sovereign human confirmation, supporting criteria-based auto-confirmation (`auto-confirm`) bounded by cumulative *fail-closed* checks.
+
+OpenCode functions as the continuity and methodology adapter; OMP provides the native execution engine.
 
 ## Implementation
 
-The public distribution maps the contract to OMP:
+The public distribution maps this contract to concrete OMP primitives:
 
-- `scheduler` dispatches approved lanes;
-- `tasks[]` represents one wave of independent work;
-- `hub` coordinates messages between agents;
-- `todo` maintains the session's active unit;
-- test sharding occurs only when the plan declares compatible files and
-  dependencies.
+- `scheduler` dispatches approved lanes in governed `tasks[]` waves.
+- `hub` coordinates inter-agent message delivery and synchronization.
+- `todo` materializes the session's active unit, enforcing cognitive discipline.
+- `test-runner` shards test suite execution when authorized by plan and test boundaries.
+- `harness-quality-gate` consolidates static metrics, Git-mined eval regressions (`eval_regressions`), security contracts (`authz_controls`), and delivery preflight checks (`delivery_config`).
+- `harness-flow-metrics` analyzes Git history, extracting objective revert and follow-up fix indicators.
+- Integration with agent teams in Maestri (`/maestri-team`) with bounded roles and audited tools.
 
-The package includes curated commands, agents, skills, scripts, configuration,
-and extensions under `omp/agent/`. The site is separate from the runtime, and
-`concepts/continual-harness.md` documents the continual loop and its limits.
+The deployable package resides in `omp/agent/`. The documentation in `website/` remains separate from the production runtime.
 
 ## Evidence
 
-The reviewed Git revision, `omp/agent/omp-port-manifest.json`, and
-`scripts/validate-public-subset.mjs` identify and verify the public package.
-Dispatch examples show the shape of the primitives, not a speed measurement.
-Any throughput, cost, or quality claim requires a command, configuration,
-revision, captured output, and reproducible comparison.
+Public package integrity is enforced through:
+1. `omp/agent/omp-port-manifest.json` carrying cryptographic integrity hashes for every distributed file.
+2. `scripts/validate-public-subset.mjs` verifying the absence of confidential paths, offensive tools, or leaked secrets in the distribution.
+3. Behavioral unit tests exercising the risk router, Quality Gate, evidence envelopes, and PREVC state transitions.
+
+Any claims regarding software stability, security, or throughput require an executable command, explicit parameters, a working tree identified by `sourceHash`, and captured terminal output.

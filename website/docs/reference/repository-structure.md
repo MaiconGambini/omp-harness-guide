@@ -4,91 +4,101 @@ sidebar_position: 4
 
 # Estrutura do Repositório
 
-Três camadas compõem o harness Oh My Pi: o **repositório público de documentação**, a **instalação gerenciada** em `~/.omp/agent` e o **layout do harness no projeto**.
+A estrutura do repositório descreve a organização física dos arquivos do harness nas três camadas operacionais: o repositório público de documentação, a instalação gerenciada do usuário e a árvore de diretórios nos projetos governados.
 
 ## Repositório público (`omp-harness-guide`)
 
 ```text
 omp-harness-guide/
-|-- README.md                     Apresentação bilíngue + instalação
+|-- README.md                     Apresentação bilíngue e instruções de instalação
 |-- omp/
-|   `-- agent/                    Núcleo OMP distribuível
-|       |-- agents/               Perfis de source agents
-|       |-- commands/             Comandos globais
-|       |-- extensions/           Extensão nativa
-|       |-- scripts/              Utilitários Node
-|       |-- skills/               Skills gerais e defensivas
-|       |-- docs/                 Contexto global
-|       |-- config.yml            Configuração pública
-|       `-- omp-port-manifest.json Inventário e hashes do pacote
-|-- website/                      Site de documentação (Docusaurus)
-|   |-- docs/                     Fonte da documentação (pt-BR, padrão)
-|   |-- i18n/en/...               Tradução (en)
-|   |-- src/                      Página inicial e tema
-|   |-- static/                   Imagens e favicon
-|   |-- docusaurus.config.ts      Configuração do site
-|   |-- sidebars.ts               Navegação
-|   `-- package.json              Dependências do site
+|   `-- agent/                    Núcleo distribuível do Oh My Pi
+|       |-- agents/               Perfis de source agents especializados (25)
+|       |-- commands/             Comandos globais slash (21)
+|       |-- extensions/           Extensões nativas (2)
+|       |-- scripts/              Utilitários portáveis de suporte e gate (55)
+|       |-- skills/               Skills de engenharia, ciclo de vida e defesa (110)
+|       |-- docs/                 Contexto global (context.md)
+|       |-- config.yml            Configuração pública do agente
+|       `-- omp-port-manifest.json Inventário de integridade com hashes SHA-256
+|-- website/                      Site de documentação em Docusaurus
+|   |-- docs/                     Conteúdo em português do Brasil (padrão)
+|   |-- i18n/en/...               Espelho completo em inglês
+|   |-- src/                      Páginas estáticas e temas
+|   |-- static/                   Imagens, diagramas e assets
+|   |-- docusaurus.config.ts      Configurações do site
+|   |-- sidebars.ts               Navegação lateral estruturada
+|   `-- package.json              Dependências e scripts do site
 |-- scripts/
-|   |-- harness-manifest.json     Manifesto público (allowlist)
-|   `-- validate-public-subset.mjs Validador de subset público
-`-- .github/workflows/            CI: validação e deploy Pages
+|   |-- harness-manifest.json     Manifesto de inclusões e exclusões públicas
+|   `-- validate-public-subset.mjs Validador automático de integridade do pacote
+`-- .github/workflows/            Pipelines de validação e publicação no GitHub Pages
 ```
 
-O repositório contém documentação, o núcleo OMP curado e validação pública. O
-pacote não inclui estado ou evidência de runtime.
+O repositório público reúne a documentação técnica, o núcleo distribuível verificado e as ferramentas de validação de entrega. Nenhum arquivo de credencial, segredo ou evidência privada de runtime é publicado.
 
 ## Instalação gerenciada (`~/.omp/agent`)
 
+A distribuição instalada na máquina do operador replica a árvore distribuível:
+
 ```text
 ~/.omp/agent/
-|-- config.yml              Configuração pública do agente
-|-- commands/               Comandos do harness (/prevc, /quality, /harness-*)
-|-- agents/                 Perfis de source agents (23)
-|-- scripts/                Utilitários Node portáveis (26)
-|-- extensions/             Extensão nativa (harness-omp-trace.ts)
-|-- skills/                 Skills gerais e defensivas (107)
-|-- docs/                   Contexto global (docs/context.md)
-`-- omp-port-manifest.json  Inventário e hashes do pacote
+|-- config.yml              Configuração pública do agente e mapeamento de papéis
+|-- commands/               Comandos globais slash (21 arquivos)
+|-- agents/                 Perfis de subagente para dispatch (25 arquivos)
+|-- scripts/                Utilitários de auditoria, métricas e gates (55 arquivos)
+|-- extensions/             Extensões nativas de telemetria (2 arquivos)
+|-- skills/                 Skills carregadas sob demanda (110 pastas de skill)
+|-- docs/                   Contexto global de operação (docs/context.md)
+`-- omp-port-manifest.json  Inventário de integridade (299 arquivos indexados)
 ```
 
-Essa árvore é copiada de `omp/agent/` e verificada pelo
-`omp-port-manifest.json`. Diretórios de runtime (sessões, caches, bancos
-locais) podem existir ao lado, mas não fazem parte do pacote público.
+Essa árvore é verificada pelo `omp-port-manifest.json`. Diretórios temporários de runtime (como caches locais e bancos de sessão) são mantidos isolados e não integram o pacote distribuível.
 
 ## Layout do harness no projeto
 
+Ao adotar o harness, um repositório incorpora a seguinte organização:
+
 ```text
 <projeto>/
-|-- AGENTS.md                     Instruções do projeto
-|-- feature_list.json             Fonte da verdade de WIP=1
+|-- AGENTS.md                     Instruções, diretrizes e regras raiz do projeto
+|-- feature_list.json             Fonte da verdade para execução em WIP=1
+|-- .github/
+|   `-- pull_request_template.md  Template de PR com Tier, Testes, Rollback e Dono
 |-- agent-os/
-|   |-- quality-thresholds.json   Métricas e risk routing
-|   |-- learned-rules.json        Ledger de regras locais
-|   |-- security-contract.json    Contrato de segurança
-|   |-- standards/                Standards do projeto
-|   `-- specs/<slug>/             Specs, planos, decisões e tickets
-`-- docs/harness/
-    |-- state/prevc.json          Fase durável do ciclo de vida
-    |-- progress.md               Progresso e blockers
-    |-- session-handoff.md        Handoff entre sessões
-    |-- sprint-contract.md        Escopo e AC de features complexas
-    |-- findings/                 Findings tipados (append-only)
-    |-- judge/                    Recibos do Judge
-    |-- quality/                  Relatórios de gate e superfícies derivadas
-    `-- traces/                   Envelope de rastreio redigido
+|   |-- project-profile.json      Perfil detectado: stack, comandos e política fixLoop
+|   |-- prevc-autonomy.json       Configuração de autoConfirm e critérios de autonomia
+|   |-- quality-thresholds.json   Chaves de métricas de qualidade e roteador de risco
+|   |-- learned-rules.json        Ledger local de regras ativas e aprendidas
+|   |-- security-contract.json    Declaração de controles de autorização
+|   |-- standards/                Diretrizes e padrões técnicos do projeto
+|   `-- specs/<slug>/             Especificações, planos de implementação e tickets
+`-- docs/
+    |-- review.md                 Regras de code review, falhas críticas e defeitos escapados
+    `-- harness/
+        |-- progress.md           Log de progresso, marcos e histórico de blockers
+        |-- session-handoff.md    Documento formal de transferência entre sessões
+        |-- sprint-contract.md    Contrato de escopo e critérios de aceite
+        `-- (registros de auditoria, recibos do Judge e relatórios do gate)
 ```
 
 ## O que é carregado pelo Oh My Pi
 
-O Oh My Pi lê `~/.omp/agent` na inicialização. Ele registra:
+Na inicialização, o runtime Oh My Pi varre `~/.omp/agent` e registra:
 
-- Comandos em `commands/` (slashes como `/prevc`).
-- Skills em `skills/` (qualquer `SKILL.md` dentro de subdiretório).
-- Extensões em `extensions/` (arquivos registrados em `config.yml`).
-- Agents em `agents/` (perfis de subagente especializados).
-- Papéis de modelo em `config.yml` (`modelRoles`).
+- **Comandos (`commands/`):** comandos prefixados por barra (como `/prevc` e `/maestri-team`).
+- **Skills (`skills/`):** instruções procedimentais em `SKILL.md`, carregadas sob demanda conforme a descrição.
+- **Extensões (`extensions/`):** hooks nativos de telemetria configurados no arquivo `config.yml`.
+- **Agentes (`agents/`):** papéis com limitações estritas de ferramentas atribuídos em chamadas `task`.
+- **Papéis de modelo (`config.yml`):** mapeamento de modelos para scheduler, review, implementação e refino.
 
-## Observação sobre a distribuição pública
+## O que isto prova e o que não prova
 
-Esta distribuição pública **não inclui** skills ofensivas de segurança, nem evidência de runtime local (estado, relatórios de gate, notas de revisão, findings, traces), nem manifestos/índices privados. As exclusões são declaradas em `scripts/harness-manifest.json` e verificadas por máquina: o validador `scripts/validate-public-subset.mjs` recusa conteúdo proibido em toda a árvore pública, e o workflow de validação bloqueia a publicação que o contenha. Esses artefatos excluídos existem apenas na instalação privada do autor.
+- **O que prova:** a conformidade da árvore garante que todas as peças necessárias para o ciclo PREVC estão instaladas nos locais esperados e com hashes correspondentes ao manifesto público.
+- **O que NÃO prova:** a integridade dos arquivos comprova apenas a presença e integridade do harness. A saúde funcional do código desenvolvido no projeto depende da execução dos testes e dos gates de qualidade correspondentes.
+
+## Páginas relacionadas
+
+- [Comandos](./commands.md) — Relação e sintaxe de comandos operacionais.
+- [Artefatos](./artifacts.md) — Definição dos esquemas e papéis de cada artefato.
+- [Projeto Existente](../guides/existing-project.md) — Como configurar essa estrutura em repositórios em andamento.

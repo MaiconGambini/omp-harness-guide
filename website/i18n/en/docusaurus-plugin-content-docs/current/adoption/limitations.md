@@ -4,59 +4,42 @@ sidebar_position: 4
 
 # Limitations
 
-What the documented Harness Oh My Pi distribution does not do — and what is an
-explicit gap rather than a capability. This repository does not use a public
-semantic version as its identifier; consult the Git revision and package
-manifest.
+A rigorous, transparent accounting of what the Oh My Pi Harness distribution does not do — treating architectural boundaries as explicit design limits rather than implicit capabilities.
 
+## Not a SaaS product
 
-## It is not a SaaS product
+The harness is not a managed cloud service. It consists of local Node.js scripts, configuration manifests, CLI commands, and extensions executing inside the developer's local terminal. There is no central web service, hosted database, user authentication system, or cloud management dashboard.
 
-The harness is a set of configuration files and scripts. There is no server,
-API, authentication or dashboard.
+## No automatic merges over existing configurations
 
-## It does not merge into existing configuration
+There is no automated merge mechanism for pre-existing `~/.omp/agent` folders. The supported upgrade path involves backing up customized configuration files and copying the clean `omp/agent/` distribution.
 
-The supported path is a clean copy of `omp/agent/` after a backup. There is no
-merge or migration script: if `~/.omp/agent` already exists, rename it to
-`omp-agent-backup` before installing.
+## Honest architectural limitations
 
-## It is not a package manager
+### Gates with low metric coverage (`Measured: N/M`)
+A Quality Gate with a `pass` verdict **is not a certificate of zero bugs**. In greenfield codebases or repositories with sparse tooling, the majority of metrics will evaluate as `not_configured` or `unavailable` (e.g., `Measured: 7/28`). The gate measures strictly what was executed; it cannot attest to the quality of uninstrumented subsystems.
 
-There is no installation CLI, automatic update or semantic versioning.
-Updates use a reviewed Git revision, manifest validation, and a new clean copy
-of the core package.
+### Azure DevOps branch policies out of scope
+The harness delivers Pull Request templates and governance workflows for Git and GitHub, but deep integration with Azure DevOps branch policies and automated merge gating remains out of scope. Teams on Azure DevOps run verification gates locally or through custom build scripts.
 
-## It does not document all skills
+### Multi-provider dependencies and model costs
+Model diversity in code review (assigning authoring and review to competing model families) is a critical quality safeguard, but it introduces dependency on multiple AI provider credentials and doubles token consumption on each delivery.
 
-The site documents the harness workflow. Specialized development skills
-(frontend, backend, Python, TypeScript) that ship with the harness do not
-have their own chapters in the documentation.
+### Terminal concurrency overhead in Maestri
+Recruiting the full agent team in Maestri (`/maestri-team`), consisting of up to 10 specialized agent roles, consumes concurrent connection slots, provider request-per-minute quotas, and local system memory. In bandwidth-constrained environments, running multiple agents in parallel may require sequential throttling.
 
-## It is not fully cross-platform
+### No autonomous merge queues or multi-agent PR voting
+Unlike frontier corporate labs with unbounded compute budgets, the harness does not run continuous speculative merge queues or multi-agent voting panels on every PR. Review relies on a single competing model reviewer guided by domain contracts in `docs/review.md`.
 
-The harness was designed and tested on Windows with PowerShell 5.1+. The
-install and migration commands are npm scripts; the Node runtime is
-portable, but shell scripts for other operating systems are not provided.
+### Learned rules and auto-activation limits
+The Refine stage generates structural recommendations and conventions. Natural language prose proposals that are not refuted by the `rule-verifier` can be auto-approved in strictly observational mode (`observe`) without operator intervention, but **no learned rule ever acquires blocking authority (`mode: blocking` with test or lint enforcement)** without prior review, deterministic validation, and explicit operator commitment in the `agent-os/learned-rules.json` ledger.
 
-## Explicit gaps
+### Tool policies are not an operating system sandbox
+Tool allowlists restrict which functions the model may invoke, but do not sandbox the process from the host operating system. Approved plan commands run on the host with full user privileges.
 
+## Infrastructure prerequisites
 
-The harness verifies its own lifecycle and evidence. It does **not** provide
-application authorization proof (RLS/IDOR) — that belongs to the application
-and its own tests. A project without a declared security contract gets a
-named `unavailable` gap, never a pass.
-
-**Missing capabilities**
-
-Protocols and integration surfaces that are not implemented (for example,
-A2A/UCP/BCP-style agent interoperability) are labeled as gaps. Cost and
-usage sources the runtime does not supply are recorded as explicit
-`unavailable` values — never invented numbers.
-
-## Dependencies
-
-- Oh My Pi installed and working.
-- Node.js 20+ for the scripts.
-- PowerShell 5.1+ on Windows.
-- Git for cloning and version control.
+- **Oh My Pi** base installed and operational.
+- **Node.js 20+** for running scripts, adapters, and integrity validators.
+- **PowerShell 5.1+** for Windows automation workflows.
+- **Git** for version control, commit integrity tracking, and flow metrics.

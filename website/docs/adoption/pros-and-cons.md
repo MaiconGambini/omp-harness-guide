@@ -4,56 +4,44 @@ sidebar_position: 2
 
 # Prós e Contras
 
-Uma avaliação honesta do que o harness entrega e do que ele custa.
+Uma avaliação transparente e equilibrada do que o harness entrega e dos custos e compromissos operacionais associados.
 
 ## Prós
 
-### Continuidade entre sessões
+### Continuidade determinística entre sessões
+Você encerra o terminal e retorna no dia seguinte com o estado intacto. A fase PREVC, os bloqueios, as decisões tomadas e o handoff estruturado (`session-handoff.md`) persistem em disco. Elimina-se o desperdício de tokens e tempo reexplicando o histórico para um novo agente.
 
-Você abre o Oh My Pi amanhã e ele sabe exatamente o que estava fazendo. A fase PREVC é durável (arquivo de fase persistente), e o handoff diz a única próxima ação. Não precisa reexplicar o contexto, reler arquivos ou adivinhar o que ficou pendente.
+### Disciplina de foco cognitivo (WIP=1)
+A restrição de uma única tarefa ativa por vez impede dispersão de escopo (*context mixing*). O teto padrão de 3 rodadas no macro-loop de correção (`fixLoop.maxAttempts`) evita vaivéns infinitos entre autor e revisor, pausando para intervenção humana antes de estourar orçamentos.
 
-### WIP=1 forçado
+### Evidência objetiva e Quality Gate transparente
+Afirmações verbais do modelo não contam como prova. O Quality Gate avalia métricas determinísticas e exibe com total clareza a razão de cobertura de medição (**`Measured: N/M`**). Avisos explícitos alertam revisores quando menos da metade das ferramentas previstas foi executada.
 
-A disciplina de uma tarefa por vez reduz trabalho paralelo abandonado. Cada feature vai até o fim ou é registrada como bloqueada com causa exata.
+### Revisão independente com modelos de famílias distintas
+Ao colocar o implementador em um modelo (ex.: Gemini Flash) e o revisor em uma arquitetura concorrente (ex.: GPT Luna), eliminam-se pontos cegos e suposições compartilhadas do mesmo provedor. Contratos por área (`docs/review.md`) mantêm o foco nas falhas críticas reais, descartando debates puramente cosméticos.
 
-### Evidência objetiva
+### Rastreabilidade total e procedimentos de reversão
+Templates padronizados de Pull Request exigem a declaração de Tier de risco, comandos de teste executados com saída observada, procedimento formal de reversão (`Como reverter`) e identificação do engenheiro responsável. Traillers de commit vinculam a entrega ao hash do relatório de validação (`sourceHash`).
 
-"Funcionou" não é suficiente. O harness exige comandos rodados, output capturado e verificação em três camadas antes de marcar uma feature como concluída.
-
-### Despacho paralelo nativo
-
-O mecanismo `task` do Oh My Pi executa lanes e shards de teste em paralelo real, com entrega automática de resultados — sem stub de background nem polling.
-
-### Auditoria e recuperação
-
-Decisões, blockers e handoffs ficam registrados em arquivos. O rastreio nativo (`pi.on`) grava um envelope redigido verificável. Se algo quebrar, você sabe quando, por que e qual era o estado anterior.
-
-### Planejamento separado da execução
-
-Para tarefas complexas, o harness separa os papéis de planner, generator e evaluator. Isso reduz o viés de auto-avaliação.
+### Despacho governado e time de agentes no Maestri
+O orquestrador despacha lanes paralelas com posse declarada de arquivos e sincronização automática, permitindo equipes especializadas com papéis estritos (arquitetura, testes, infraestrutura, segurança e revisão).
 
 ## Contras
 
-### Mais arquivos
+### Custo acrescido de tokens e provedores
+Executar revisores independentes em modelos de ponta, acionar times com múltiplos agentes simultâneos e avaliar testes de regressão eleva o consumo de tokens e a dependência de créditos em múltiplos provedores de IA.
 
-O harness adiciona `feature_list.json`, `docs/harness/progress.md`, `session-handoff.md`, `sprint-contract.md`, `agent-os/` e outros. Para projetos pequenos, isso pode parecer burocracia.
+### Volume de arquivos de governança
+O harness introduz especificações em `agent-os/specs/`, relatórios de gate, contratos em `docs/review.md`, handoffs e templates de PR. Para projetos minúsculos ou scripts descartáveis, essa estrutura pode parecer burocrática.
 
-### Disciplina constante
+### Necessidade de disciplina constante
+O valor do harness depende da adesão estrita ao fluxo: respeitar WIP=1, validar saídas reais e registrar handoffs em cada sessão. Atalhos e edições improvisadas fora do PREVC degradam a integridade do estado durável.
 
-WIP=1, verificação em três camadas e handoff obrigatório exigem disciplina em toda sessão. Pular etapas reduz o valor do harness.
+### Não substitui discernimento de produto e engenharia
+O harness garante processo, rastreabilidade e medição empírica; ele não inventa boa arquitetura nem garante que o produto construído terá valor comercial. Código mal concebido continuará mal concebido, ainda que aprovado com evidências completas ("you land it, you own it").
 
-### Custo de manutenção
+### Curva de aprendizado inicial
+A adoção inicial exige compreender a divisão de fases, as convenções de comandos e os arquivos de configuração. O investimento compensa largamente em projetos de médio e longo prazo, mas exige maturidade da equipe.
 
-Os arquivos de estado precisam ser mantidos atualizados. Se o `progress.md` ficar desatualizado, a próxima sessão começa com informação errada.
-
-### Não substitui boa engenharia
-
-O harness não garante qualidade de código; estrutura a rastreabilidade por meio de evidências. Um código ruim continua sendo código ruim mesmo quando as evidências são completas.
-
-### Curva inicial
-
-A primeira sessão com harness requer aprender comandos, conceitos e o fluxo PREVC. O investimento se paga em projetos longos, mas pode ser excessivo para tarefas únicas.
-
-### Instalação limpa, sem merge
-
-Não existe merge automático sobre uma configuração existente. A migração de layout legado é assistida e preserva arquivos não gerenciados, mas você ainda precisa planejar o backup.
+### Instalação em diretório limpo
+Não há suporte a merge automatizado sobre instalações existentes. Atualizações e migrações exigem backup prévio e cópia limpa do pacote `omp/agent/`.

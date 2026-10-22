@@ -4,9 +4,7 @@ sidebar_position: 1
 
 # Início rápido
 
-Este caminho leva de um projeto limpo ao primeiro objetivo no Harness Oh My Pi.
-Para a instalação completa, incluindo backup, obtenção e validação do pacote,
-consulte [Instalação](./installation).
+O início rápido apresenta o caminho mais direto para configurar o Harness Oh My Pi e executar sua primeira tarefa sob o ciclo PREVC. Para a instalação completa, incluindo backup, obtenção e validação do pacote, consulte [Instalação](./installation).
 
 ## Passo 1: Instalar o pacote do harness
 
@@ -35,6 +33,17 @@ O harness classifica o risco da tarefa, descobre o contexto técnico do reposit�
 O OMP executa as sete etapas do PREVC em quatro fases. O agrupamento organiza as fronteiras, mas não elimina nenhuma etapa:
 
 1. **Prepare (`prepare + plan`):** O harness descobre o contexto, classifica o risco, define o ownership (`src/auth.py`, `tests/test_auth.py`) e aguarda a aprovação do plano.
-2. **Execute (`execute`):** Após a aprovação, o scheduler usa `task` e uma chamada `tasks[]` quando houver lanes independentes; `hub` coordena mensagens entre agents.
+2. **Execute (`execute`):** Após a aprovação, o scheduler usa `task` e uma chamada `tasks[]` quando houver lanes independentes; `hub` coordena mensagens entre agentes.
 3. **Validate (`validate + judge`):** O runtime executa os comandos de verificação e um Judge read-only compara o resultado com o contrato. A saída precisa ser capturada no terminal; este guia não fornece resultados de uma execução real.
-4. **Confirm (`refine + confirm`):** Refine propõe melhorias sem escrever nem votar, e o operador revisa a evidência antes de confirmar o handoff.
+4. **Confirm (`refine + confirm`):** Refine propõe melhorias sem escrever nem votar, e o operador revisa a evidência antes de confirmar o handoff. A confirmação humana é a regra padrão; a autoconfirmação com critérios (`autoConfirm`) permanece desligada por padrão até ativação explícita no projeto.
+
+## O que isto prova e o que não prova
+
+- **O que prova:** que o pacote do harness foi copiado para `~/.omp/agent`, que o Oh My Pi reconhece os comandos nativos e que o ciclo PREVC transiciona entre as fases respeitando o contrato durável em disco.
+- **O que não prova:** não comprova a correção do código da aplicação, não garante cobertura de testes de negócio nem substitui a validação humana das alterações.
+
+## Próximos passos
+
+- Revise os [Pré-requisitos](./prerequisites) do ambiente.
+- Siga o passo a passo completo em [Instalação](./installation).
+- Execute sua [Primeira Sessão](./first-session) com perfil de projeto e contexto durável.

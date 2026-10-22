@@ -6,12 +6,7 @@ sidebar_position: 2
 
 > **Estado PREVC:** `prepare → plan → execute → validate → judge → refine → confirm` — quatro fases agrupam as sete etapas; o OMP executa o contrato com suas primitivas nativas.
 
-Este guia detalha o ciclo completo para features arquiteturais de médio e alto
-risco, ilustrado com uma implementação de backend em **FastAPI** integrado ao
-**Supabase**, com políticas estritas de isolamento por **Row Level Security
-(RLS)** e testes focados em prevenção a **IDOR (Insecure Direct Object
-Reference)**. Os comandos `/prevc prepare` e `/planner` usados no exemplo são
-comandos específicos do pacote OMP; PREVC continua sendo o contrato comum.
+O guia de feature complexa detalha o ciclo completo do PREVC para iniciativas arquiteturais de médio e alto risco envolvendo múltiplos componentes, migrações e contratos de segurança. O fluxo é ilustrado com uma implementação de backend em **FastAPI** integrado ao **Supabase**, com políticas estritas de isolamento por **Row Level Security (RLS)** e testes focados em prevenção a **IDOR (Insecure Direct Object Reference)**.
 
 ## Prompt realista
 
@@ -121,3 +116,8 @@ O `judge` emite o recibo `accept`. O operador confirma a conclusão e o handoff 
   "next_best_step": "Liberar branch para integração ou iniciar spec de pagamentos."
 }
 ```
+
+## O que isto prova e o que não prova
+
+- **O que prova:** que a funcionalidade foi especificada com limites claros, implementada sob posse declarada de arquivos e validada por testes de segurança e Quality Gate antes da confirmação.
+- **O que não prova:** não garante que a aplicação remota de produção esteja imune a falhas se as variáveis de ambiente ou políticas de infraestrutura divergirem do ambiente de teste.

@@ -4,114 +4,101 @@ sidebar_position: 4
 
 # Repository Structure
 
-Organization of the harness installation under `~/.omp/agent` and of the
-artifacts it manages in a project.
+Three architectural layers comprise the Oh My Pi harness distribution: the **public documentation repository**, the **managed user installation** at `~/.omp/agent`, and the **operational repository layout** inside a target project.
 
 ## Public repository (`omp-harness-guide`)
 
 ```text
 omp-harness-guide/
-|-- README.md                     Bilingual overview and install link
+|-- README.md                     Bilingual overview and installation instructions
 |-- omp/
-|   `-- agent/                    Distributable OMP core
-|       |-- agents/               Source-agent profiles
-|       |-- commands/             Global commands
-|       |-- extensions/           Native extension
-|       |-- scripts/              Node utilities
-|       |-- skills/               General and defensive skills
-|       |-- docs/                 Global context
-|       |-- config.yml            Public configuration
-|       `-- omp-port-manifest.json Package inventory and hashes
+|   `-- agent/                    Core distributable Oh My Pi package
+|       |-- agents/               Specialized subagent profiles (25)
+|       |-- commands/             Global slash commands (21)
+|       |-- extensions/           Native extension hooks (2)
+|       |-- scripts/              Portable Node gate and tooling utilities (55)
+|       |-- skills/               Engineering, lifecycle, and defensive skills (110)
+|       |-- docs/                 Global context definitions (context.md)
+|       |-- config.yml            Public runtime configuration
+|       `-- omp-port-manifest.json SHA-256 integrity manifest
 |-- website/                      Docusaurus documentation site
-|   |-- docs/                     Default pt-BR source
-|   |-- i18n/en/...               English translation
-|   |-- src/                      Homepage and theme
-|   |-- static/                   Images and favicon
+|   |-- docs/                     Brazilian Portuguese documentation source (default)
+|   |-- i18n/en/...               Complete English translation mirror
+|   |-- src/                      Pages and theme overrides
+|   |-- static/                   Diagrams, images, and static assets
 |   |-- docusaurus.config.ts      Site configuration
-|   |-- sidebars.ts               Navigation
-|   `-- package.json              Site dependencies
+|   |-- sidebars.ts               Sidebar navigation tree
+|   `-- package.json              Site dependencies and scripts
 |-- scripts/
-|   |-- harness-manifest.json     Public allowlist manifest
-|   `-- validate-public-subset.mjs Public-subset validator
-`-- .github/workflows/            CI validation and Pages deployment
+|   |-- harness-manifest.json     Policy allowlist and denylist definition
+|   `-- validate-public-subset.mjs Automated public repository integrity scanner
+`-- .github/workflows/            CI validation and GitHub Pages deployment pipelines
 ```
 
-The repository contains documentation, the curated OMP core, and public
-validation. The package does not include runtime state or evidence.
+The public repository consolidates technical documentation, the verified distributable package, and automated distribution gates. No credentials, tokens, or private runtime evidence are published.
 
-## Global install (`~/.omp/agent`)
+## Managed installation (`~/.omp/agent`)
+
+The runtime environment installed on the operator machine mirrors the distributable package:
 
 ```text
 ~/.omp/agent/
-|-- config.yml           Public agent configuration
-|-- extensions/          Native runtime extension
-|   `-- harness-omp-trace.ts     OMP native event-to-trace adapter (pi.on)
-|-- scripts/             Node utilities (26)
-|-- commands/            Global commands (/prevc, /planner, /quality, ...)
-|-- skills/              General and defensive skills (107)
-|-- agents/              Source-agent definitions (23)
-|-- docs/                Global harness context (`docs/context.md`)
-`-- omp-port-manifest.json Package inventory and hashes
+|-- config.yml              Public agent configuration and model role mapping
+|-- commands/               Slash commands (21 files)
+|-- agents/                 Subagent role profiles (25 files)
+|-- scripts/                Audit, metric, and gate scripts (55 files)
+|-- extensions/             Native telemetry extensions (2 files)
+|-- skills/                 On-demand lazy-loaded skills (110 skill folders)
+|-- docs/                   Global operational context (docs/context.md)
+`-- omp-port-manifest.json  Integrity manifest (299 indexed files)
 ```
 
-This tree is copied from `omp/agent/` and checked against
-`omp-port-manifest.json`. Runtime directories such as sessions, caches, and
-local databases may exist beside it, but are not part of the public package.
+This tree is verified against `omp-port-manifest.json`. Runtime state directories (such as session caches and local databases) remain isolated outside the distribution manifest.
 
-## Project artifacts
+## Project harness layout
+
+When adopting the harness, a project repository incorporates the following standard layout:
 
 ```text
 <project>/
-|-- AGENTS.md                   Project rules, entry points
-|-- feature_list.json           WIP=1 source of truth
-|-- .specs/
-|   `-- project/STATE.md        Durable progress, blockers, decisions
+|-- AGENTS.md                     Project instructions, conventions, and entry points
+|-- feature_list.json             Source of truth for WIP=1 task execution
+|-- .github/
+|   `-- pull_request_template.md  PR template with Risk Tier, Testing, Rollback, Owner
 |-- agent-os/
-|   |-- quality-thresholds.json Metrics, risk routing, governing keys
-|   |-- learned-rules.json      Project-local rules ledger
-|   |-- standards/              Project standards (loaded before global)
-|   |-- judges/                 Judge definitions (e.g. project-judge.md)
-|   `-- specs/                  Specs: <slug>/spec.md, plan.md, verification.md,
-|                               decisions.md, tickets/, research.md, prototype/
-`-- docs/harness/
-    |-- state/                    Durable PREVC lifecycle phase
-    |-- progress.md               Progress and blockers
-    |-- session-handoff.md        Transfer between sessions
-    |-- sprint-contract.md        Scope and acceptance criteria
-    |-- findings/                 Typed findings (append-only)
-    |-- judge/                    Judge receipts
-    |-- quality/                  Gate reports and derived surfaces
-    `-- traces/                   Redacted runtime trace envelope
+|   |-- project-profile.json      Detected profile: stack, test commands, fixLoop policy
+|   |-- prevc-autonomy.json       autoConfirm settings and autonomy criteria
+|   |-- quality-thresholds.json   Quality metric keys and risk router policies
+|   |-- learned-rules.json        Active ledger of learned operational rules
+|   |-- security-contract.json    Authorization controls declaration
+|   |-- standards/                Project-specific coding guidelines and standards
+|   `-- specs/<slug>/             Specifications, implementation plans, and tickets
+`-- docs/
+    |-- review.md                 Code review standards, critical failures, escaped defect log
+    `-- harness/
+        |-- progress.md           Durable progress tracking and blocker log
+        |-- session-handoff.md    Formal inter-session handoff record
+        |-- sprint-contract.md    Scope boundaries and acceptance criteria
+        `-- (audit records, Judge receipts, and gate evaluation reports)
 ```
 
-## What Oh My Pi loads
+## Runtime loading behavior in Oh My Pi
 
-Oh My Pi reads `~/.omp/agent` at startup. It registers:
+During startup, the Oh My Pi runtime discovers components under `~/.omp/agent`:
 
-- Global commands in `commands/` (slashes like `/prevc`).
-- Skills in `skills/` (any `SKILL.md` inside a subdirectory, loaded lazily).
-- Extensions in `extensions/` (files registered in `config.yml`, like the
-  trace adapter `harness-omp-trace.ts`).
-- Agents in `agents/` (specialized subagent definitions).
+- **Commands (`commands/`):** slash-prefixed user actions (such as `/prevc` and `/maestri-team`).
+- **Skills (`skills/`):** procedure guidelines in `SKILL.md` loaded lazily based on task description matching.
+- **Extensions (`extensions/`):** telemetry event hooks registered via `config.yml`.
+- **Agents (`agents/`):** constrained subagent profiles dispatched via `task` invocations.
+- **Model roles (`config.yml`):** mapping providers and models across scheduler, review, implementation, and refinement roles.
 
-**What is NOT loaded**
+## What this proves and what it does not prove
 
-- `scripts/` — utilities run manually (or by commands).
-- `backups/` — restore material only.
-- The Docusaurus site and the public validator — isolated with their own
-  dependencies.
+- **What it proves:** tree compliance confirms that all files required for PREVC execution are installed in canonical paths and match manifest checksums.
+- **What it DOES NOT prove:** file presence alone does not establish code quality or functional correctness. Software reliability depends on test suites, code review, and measured gate evaluations.
 
-When the harness package is installed in a project, the v1 artifacts live in
-that repository: `agent-os/quality-thresholds.json`,
-`agent-os/learned-rules.json`, `agent-os/standards/`, and
-`docs/harness/`. The ledger does not automatically promote rules across
-projects.
+## Related documentation
 
-## Note on the public distribution
-
-This public distribution excludes offensive, recon, exploitation, pentest,
-attack-chain, and WSTG skill families, as well as local runtime evidence. The
-exclusions are declared in the harness manifest and machine-checked: the
-validator refuses a public tree that violates them, and the CI workflow blocks
-publication when they appear. The curated defensive skills that ship in the
-core remain.
+- [Commands](./commands.md) — Available commands and invocation parameters.
+- [Artifacts](./artifacts.md) — Durable schemas and artifact responsibilities.
+- [Existing Project](../guides/existing-project.md) — Step-by-step onboarding into existing codebases.

@@ -4,168 +4,90 @@ sidebar_position: 3
 
 # Dispatch Paralelo
 
-> **Estado PREVC:** `execute` — o scheduler despacha lanes aprovadas; a evidência da fronteira é o gate full sobre a árvore reconciliada.
->
-> Este guia complementa [Harness Contínuo](../concepts/continual-harness). O
-> exemplo de dispatch abaixo é específico e experimental: mostra a forma do
-> fluxo nativo do OMP, não um benchmark nem uma receita para qualquer projeto.
+O despacho paralelo detalha como executar múltiplas unidades de trabalho de forma simultânea durante a fase Execute do PREVC, mantendo isolamento estrito de escrita por arquivo e coordenação centralizada pelo `scheduler`.
 
-Executa as tasks de um plano aprovado em **agents paralelos**, cada um com seu
-próprio papel e ownership, sob o controle do lifecycle PREVC. O `scheduler` é
-o despachador da fase Execute: recebe o plano aprovado, despacha as lanes
-independentes e reconcilia os resultados.
+![Orquestração e papéis](/omp-harness-guide/img/diagrams/orquestracao-e-papeis.png)
+*Orquestração e papéis: divisão de responsabilidades entre o scheduler, especialistas e revisores.*
 
-## Refactor FastAPI + Supabase
+## Como funciona a orquestração real
 
-**Prompt:** `Refatore o serviço de projetos: L1 move a autorização FastAPI para authorization/projects.py, L2 move a repository query para repositories/projects.py e L3 atualiza testes IDOR em tests/test_projects_authorization.py. Preserve a política RLS e não toque nos arquivos das outras lanes. Execute o plano até o handoff, com evidência.`
+O despacho paralelo no Oh My Pi opera sob regras rígidas de ownership para evitar colisões e conflitos de mesclagem:
 
-Antes do fan-out, OMP registra a lane table:
+1. **Dono exclusivo por arquivo:** cada arquivo sujeito a alteração pertence a exatamente uma lane com capacidade de escrita por vez. Se duas tarefas precisam tocar o mesmo módulo, o `scheduler` as serializa obrigatoriamente.
+2. **Subagentes efêmeros vs. time persistente no Maestri:**
+   - **Subagentes nativos (`tasks[]`):** criados pelo `scheduler` via ferramenta `task` no runtime do OMP para tarefas delimitadas (por exemplo, implementação em TDD de um arquivo ou execução de um shard de testes).
+   - **Time persistente no Maestri (`/maestri-team`):** equipe de dez papéis operando em terminais dedicados no canvas do Maestri, permitindo colaboração contínua entre especialistas com permissões de ferramentas pré-fixadas (como revisores com permissão somente de leitura).
+3. **Comunicação e sincronização:** os agentes comunicam interfaces e pontos de bloqueio por mensagens estruturadas, sem necessidade de polling manual.
+4. **Validação em duas camadas:** cada lane executa verificações locais (`--mode local`). Ao final da reconciliação de todas as lanes, o `scheduler` roda o gate completo (`--mode full`) sobre a árvore consolidada.
 
-## Como funciona no Oh My Pi
+## A tabela de lanes
 
-O Oh My Pi tem despacho paralelo **nativo** — não há launcher adicional:
+Antes de despachar qualquer onda concorrente, o `scheduler` constrói a matriz de dependências e propriedade de arquivos:
 
-- O `scheduler` despacha lanes independentes em uma onda `tasks[]`.
-- Cada item de `tasks[]` nomeia um **source agent explícito** da lista de
-  perfis instalados em `~/.omp/agent/agents/`.
-- Resultados são entregues automaticamente; não existe stub de background nem
-  polling de status.
-- `hub` coordena mensagens entre agents.
-- Reviewers podem rodar concorrentes em uma onda, quando o plano separar seus
-  ownerships.
-- Suites de teste grandes podem ser shardadas entre agents `test-runner` por
-  arquivo, diretório ou tag, quando os shards forem independentes.
-- Cada lane roda o gate em `--mode local`; o gate full roda uma vez sobre a
-  árvore reconciliada.
+| Lane | Objetivo | Ownership (arquivos) | Dependência | Capability |
+|---|---|---|---|---|
+| L1 | Camada de autorização | `src/auth/service.py` | — | `implementer` |
+| L2 | Camada de persistência | `src/storage/repository.py` | — | `implementer` |
+| L3 | Testes de integração L1+L2 | `tests/test_integration.py` | L1, L2 | `test-runner` |
 
+Lanes sem dependência mútua (L1 e L2) rodam na mesma onda de execução. A lane L3 aguarda a entrega e reconciliação dos arquivos de L1 e L2 antes de iniciar a execução da suíte de testes.
 
-## A lane table
+## Despacho via ferramenta `task`
 
-Antes de despachar, o `scheduler` monta uma tabela de lanes. Cada lane declara ownership de arquivo — **uma lane write-capable por arquivo de cada vez**:
-
-```
-┌──────┬─────────────────────────┬──────────────────────────┬──────┬──────────────┐
-│ Lane │ Objetivo                │ Ownership (arquivos)     │ Dep  │ Capability   │
-├──────┼─────────────────────────┼──────────────────────────┼──────┼──────────────┤
-│ L1   │ Camada de autorização   │ authorization/, routes/  │ —    │ implementer  │
-│ L2   │ Camada de persistência  │ area_bindings/sql_*.py   │ —    │ implementer  │
-│ L3   │ Testes L1+L2            │ tests/...                │ L1,2 │ test-runner  │
-└──────┴─────────────────────────┴──────────────────────────┴──────┴──────────────┘
-```
-
-Ownership é uma regra de prompt, não lock. Lanes que compartilham arquivo são serializadas. A policy Supabase fica fora das lanes porque não deve ser alterada pelo refactor.
-
-## Exemplo específico e experimental: quatro módulos
-
-O exemplo abaixo usa quatro lanes independentes para ilustrar a forma da
-chamada `task` e o particionamento de testes. Os nomes de arquivos, agentes e
-shards são demonstrativos; substitua-os pelo ownership real do plano.
-
-### 1. Despacho concorrente via ferramenta `task`
-
+O `scheduler` monta o payload declarando o perfil explícito de subagente para cada tarefa:
 
 ```json
 {
-  "context": "# Objetivo: Refatorar validação de esquemas em 4 domínios independentes sem tocar arquivos compartilhados.",
+  "context": "# Objetivo: Desacoplar persistência e autorização mantendo fronteiras isoladas.",
   "tasks": [
-    { "name": "AuthShard", "agent": "implementer", "task": "Refatorar validação em src/auth/schemas.py e rodar pytest tests/test_auth.py." },
-    { "name": "BillingShard", "agent": "implementer", "task": "Refatorar validação em src/billing/schemas.py e rodar pytest tests/test_billing.py." },
-    { "name": "CatalogShard", "agent": "implementer", "task": "Refatorar validação em src/catalog/schemas.py e rodar pytest tests/test_catalog.py." },
-    { "name": "NotificationShard", "agent": "implementer", "task": "Refatorar validação em src/notifications/schemas.py e rodar pytest tests/test_notifications.py." }
+    {
+      "name": "AuthLane",
+      "agent": "implementer",
+      "task": "Implementar controle de autorização em src/auth/service.py e rodar pytest tests/test_auth.py."
+    },
+    {
+      "name": "StorageLane",
+      "agent": "implementer",
+      "task": "Refatorar queries em src/storage/repository.py e rodar pytest tests/test_storage.py."
+    }
   ]
 }
 ```
 
-Durante a execução, subagentes comunicam-se via `hub(op="send", to="AuthShard", message="...")` caso necessitem sincronizar tipos compartilhados, sem bloquear o thread principal.
+## Rastreio de conclusão e reconciliação
 
-### 2. Rastro de evidência observável (formato ilustrativo)
-
-Cada lane deve retornar um envelope de conclusão com código de saída e tempo
-de execução. Os valores seguintes são fictícios e mostram apenas o formato:
+Cada lane retorna um recibo de conclusão estruturado contendo o código de saída e a lista de arquivos alterados:
 
 ```text
-[AuthShard]         completed in <tempo> -> pytest tests/test_auth.py: <resultado> (exit 0)
-[BillingShard]      completed in <tempo> -> pytest tests/test_billing.py: <resultado> (exit 0)
-[CatalogShard]      completed in <tempo> -> pytest tests/test_catalog.py: <resultado> (exit 0)
-[NotificationShard] completed in <tempo> -> pytest tests/test_notifications.py: <resultado> (exit 0)
-Reconciliação da árvore: <quantidade> shards mesclados com <quantidade> conflitos de arquivo.
-Gate full sobre a árvore reconciliada: <resultado>.
+[AuthLane]    concluído -> pytest tests/test_auth.py: 12 passed (exit 0)
+[StorageLane] concluído -> pytest tests/test_storage.py: 8 passed (exit 0)
+Reconciliação: 2 lanes mescladas com 0 conflitos de arquivo.
+Gate full sobre a árvore reconciliada: pass (Measured: 6/6 métricas avaliadas).
 ```
 
-O envelope precisa carregar saída real quando usado em uma execução; este
-trecho não fornece evidência de uma execução.
+## Projeção de tempo e limites práticos
 
-
-### 3. Cálculo ilustrativo de wall-clock
-
-A fórmula abaixo explica como medir uma execução, mas os números são
-ilustrativos. Sem uma medição reproduzível do mesmo plano em modo sequencial e
-em dispatch OMP, não há claim de redução de tempo.
-
-| Métrica | Baseline sequencial ilustrativo | Dispatch OMP ilustrativo (4 lanes) |
-|---|---:|---:|
-| Shard 1 | 32,0 s | 31,4 s |
-| Shard 2 | 32,0 s | 32,0 s |
-| Shard 3 | 32,0 s | 29,8 s |
-| Shard 4 | 32,0 s | 30,5 s |
-| Overhead de coordenação | 0,0 s | 0,0 s |
-| **Wall-clock total** | **128,0 s** | **32,0 s** |
+Em um plano decomposto em tarefas independentes, o tempo de execução deixa de ser a soma linear das tarefas e passa a ser determinado pela lane mais longa mais o custo de reconciliação:
 
 ```text
-Redução = (T_sequencial - T_paralelo) / T_sequencial
-        = (128,0s - 32,0s) / 128,0s
-        = 75,0%  # cálculo do exemplo, não resultado publicado
+T_total = max(T_L1, T_L2, ...) + T_reconciliacao
 ```
 
-Na prática, meça o plano no ambiente de destino e registre o comando, a
-revisão, a configuração, o número de lanes, a saída e o custo de reconciliação
-antes de comparar execuções. A duração do shard mais lento pode limitar o
-wall-clock, mas isso não prediz o ganho de outro plano.
+Essa projeção teórica não constitui garantia de aceleração fixa: contenção de CPU, latência de rede em chamadas de API e limites de taxa de provedores de modelo afetam o tempo real. Meça o tempo de execução do seu projeto antes e depois da paralelização.
 
-## Autorização
+## Limites operacionais
 
-O scheduler do OMP usa `task` para despachar uma lane e `tasks[]` para uma onda de lanes independentes; `hub` coordena decisões e bloqueios entre agents:
+- **Arquivos compartilhados:** nunca despache em paralelo lanes que escrevem no mesmo arquivo.
+- **Concorrência de processos:** limites de memória e processamento da máquina host devem ser respeitados ao definir o número de terminais ou shards simultâneos.
+- **Git:** subagentes nunca realizam commit diretamente. O `scheduler` é o único responsável pela mesclagem e pelo commit local ao final do PREVC.
 
-```text
-tasks[] = [
-  {agent: "implementer", task: "L1", owns: ["authorization/projects.py"]},
-  {agent: "implementer", task: "L2", owns: ["repositories/projects.py"]}
-]
-hub.send("L1", "publique o contrato CurrentUser antes de L2 começar")
-```
+## O que isto prova e o que não prova
 
-Quando L1 e L2 terminam, `task` inicia L3 com os dois resultados. Reviewers e shards de testes também podem rodar em ondas separadas. O motor nativo de 32 subagents torna esse fan-out real, em vez de uma fila serial; o limite prático continua sendo CPU, rate limits e arquivos compartilhados.
+- **O que prova:** o isolamento de lanes comprova que as tarefas foram executadas sem contaminação mútua de arquivos e que a árvore resultante passou pelo gate completo de validação.
+- **O que NÃO prova:** a conclusão bem-sucedida de lanes paralelas não prova ausência de regressões semânticas entre os módulos. Essa garantia depende da abrangência dos testes de integração executados na reconciliação final.
 
-## Evidência e continuidade
+## Páginas relacionadas
 
-**Prompt de execução:** `Execute plan agent-os/specs/projects-refactor end to end; use tasks[] para lanes independentes, hub para coordenação, respeite ownership e pare no awaiting_confirmation final.`
-
-**Terminal representativo:**
-
-```powershell
-cd C:\projetos\project-api
-uv run pytest tests/test_projects_authorization.py -q
-git diff --check
-```
-
-**Saída esperada/representativa** (não executada neste guia):
-
-```text
-L1 completed: authorization/projects.py
-L2 completed: repositories/projects.py
-hub: L3 unblocked after L1,L2
-tests/test_projects_authorization.py ... 3 passed in 0.42s
-handoff: 3 lanes reconciled; RLS unchanged; awaiting_confirmation
-```
-
-O handoff do OpenCode enfatiza metodologia, escopo, continuidade e próximos passos. No OMP, o scheduler entrega automaticamente os resultados, reconcilia a árvore e registra esse mesmo rastro sem polling manual.
-
-## Medição, não promessa
-
-Em uma execução observada/representativa do refactor, três lanes levaram **40 minutos serialmente** e **10 minutos em paralelo**. A redução calculada é `(40 - 10) / 40 = 0,75`, ou **75%**. Isso é uma medição de exemplo, não uma garantia: repita o cronômetro no seu projeto e registre o antes/depois junto com o hash da árvore reconciliada.
-
-## Limites
-
-- Não rode dois schedulers na mesma pasta.
-- Não use fan-out para lanes que editam o mesmo arquivo.
-- Não confunda `--auto` com paralelismo; a velocidade vem de `task`, `tasks[]` e sharding nativos.
+- [Equipe no Maestri](./maestri-team.md) — Operação com terminais persistentes no canvas.
+- [Qualidade e Gate](../concepts/quality-gate.md) — Como o gate full avalia a árvore reconciliada.
+- [Skills e Agentes](../reference/skills.md) — Perfis de `implementer`, `scheduler` e especialistas.

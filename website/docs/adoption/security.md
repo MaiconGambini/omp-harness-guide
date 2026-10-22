@@ -4,64 +4,59 @@ sidebar_position: 3
 
 # Segurança
 
-Limites de segurança do Harness Oh My Pi. É importante entender tanto o que o harness protege quanto o que ele deliberadamente não protege — a segurança mora na fase de planejamento e aprovação, não em bloqueios automáticos.
+A seção de segurança documenta os limites, as salvaguardas e os guardrails obrigatórios do Harness Oh My Pi, diferenciando proteções ativas de fronteiras do sistema operacional. É fundamental compreender tanto o que o harness protege ativamente quanto o que ele deliberadamente não protege — a segurança real mora na fase de planejamento e aprovação prévia, e não em bloqueios reativos automáticos.
 
 ## O que o harness protege
 
-- **Estado durável** — blockers, decisões e handoffs são registrados em arquivos. Nenhuma informação de estado vive apenas na memória do chat.
-- **Permissões declarativas** — cada agent tem uma allowlist de ferramentas; operações sensíveis (push, deploy, mutação de pacotes, diretórios externos) exigem aprovação explícita.
-- **Verificação em três camadas** — todo resultado é validado antes de ser marcado como concluído.
-- **Rastreabilidade** — cada mudança é associada a uma feature, com evidência e aprovação registradas.
-- **Redação** — o rastreio nativo grava apenas o nome e o id da chamada de ferramenta, nunca corpos de entrada/saída, mensagens ou valores de ambiente.
+- **Estado durável e rastreabilidade:** Decisões, bloqueios, comandos e handoffs são persistidos em arquivos Git, sem informações críticas confinadas à memória volátil de sessões.
+- **Permissões declarativas por agente:** Cada papel de agente opera sob uma allowlist estrita de ferramentas; operações perigosas (mutação de pacotes, diretórios externos, execução de comandos não catalogados) exigem confirmação explícita.
+- **Verificação fail-closed:** O Quality Gate reprova se qualquer métrica bloqueante sofrer falha de execução, scanner ausente ou código de saída não previsto (`unavailable`). Ferramentas com crash nunca são convertidas em contagem zero.
+- **Quarentena de staging e expurgo de credenciais:** Conteúdos destinados ao segundo cérebro (Obsidian) passam por área de quarentena com varredura contra segredos (usando o validador público `harness-security-scan.mjs` ou rotinas locais do operador fora do pacote) e filtros de privacidade antes da sincronização.
+- **Redação estrita de telemetria:** O rastreio nativo de eventos (`harness-omp-trace.ts`) grava exclusivamente nomes e identificadores de chamadas de ferramentas, suprimindo payloads completos, corpos de requisições e variáveis de ambiente.
 
 ## Guardrails obrigatórios
 
-- **Red-team quickcheck (R1)** — `harness-redteam-scan.mjs` escaneia cada diff de lane reconciliado (determinístico, read-only); achados ou tier `sampling`/`full` escalam para revisão de segurança especializada.
-- **Cooldown de dependência (R3)** — uma dependência nova com menos de 7 dias bloqueia o gate full; apenas aprovação explícita do operador libera.
-- **Contrato de segurança (R2)** — `agent-os/security-contract.json` declara os caminhos de evidência de isolamento/autorização do projeto; o gate exige a presença do contrato e a existência da evidência declarada (`authz_controls`). Sem contrato, a lacuna é nomeada como `unavailable` — nunca um pass.
-- **Varredura de secrets** — `/harness-security-scan` audita harness e projeto buscando segredos e riscos de supply-chain, resumindo PASS/WARN/FAIL sem imprimir valores.
+### Red-team obrigatório no tier full
+Em iniciativas classificadas como tier `full` (ou risco `high`), o script `harness-prevc-state.mjs` bloqueia a transição `judge -> refine` caso não exista um parecer de auditoria de segurança aprovado com o mesmo `sourceHash` e contendo a linha `Red-team: N tentativas` (N mínimo 3) e `Verdict: APPROVE`. No ambiente de trabalho do operador, esses testes na superfície alterada são conduzidos pelo agente de segurança do operador; a distribuição pública do harness não inclui o subagente ofensivo `security-analyst`.
 
-## Bloqueios do security guard
+### Contrato de segurança executável (`authz_controls`)
+O comando `harness-security-contract --run --metric` avalia rotas protegidas, integridade de autenticação e regras de isolamento multi-tenant (RLS/IDOR) declaradas em `agent-os/security-contract.json`. Se um serviço de suporte (ex.: banco PostgreSQL de teste) estiver inacessível, o comando emite `unavailable` e o gate reprova compulsoriamente.
 
-A extensão `harness-security-guard.ts` bloqueia padrões reconhecidos de:
+### Pré-voo de entrega sem deploy (`delivery_config`)
+O script `harness-delivery-preflight --config-check --metric` valida a integridade sintática de arquivos Docker Compose, Dockerfiles e manifestos de nuvem antes do merge, prevenindo que configurações quebradas alcancem produção, sem contudo disparar deploys ou builds demorados.
 
-- Remoção recursiva.
-- `git reset --hard` e variantes destrutivas.
-- `git clean` forçado.
-- Shells remotos.
-- Download seguido de execução.
-- Acesso a caminhos sensíveis.
+### Cooldown de dependências
+O script `harness-dependency-cooldown.mjs` opera de forma estritamente offline: rastreia o aparecimento de novas dependências nos lockfiles do projeto contra o arquivo local `agent-os/dependency-ledger.json`. Qualquer pacote cuja primeira detecção (`firstSeen`) seja inferior a 7 dias bloqueia o Quality Gate full, a menos que o operador aprove explicitamente a dependência via comando `--approve <pacote>@<versão> --yes`.
 
-## Redação de logs e retenção
+## Salvaguardas no terminal e guardrails
 
-O `harness-omp-trace.ts` consome eventos nativos (`pi.on`) e persiste um envelope redigido, validado, encadeado por hash e limitado por tamanho/eventos. Registros de ferramenta carregam apenas nome e id da chamada; registros de modelo carregam identidade e uso exatamente como o runtime forneceu (ausente → `unavailable` explícito, nunca zero ou inferido). Logs ajudam no diagnóstico; eles não provam que um objetivo foi concluído corretamente — apenas `--verify` torna o stream evidência de auditoria.
+No pacote público distribuível, a proteção contra comandos perigosos baseia-se em governança preventiva: allowlists estritas por agente, revisão humana de comandos na fase de planejamento e varreduras com `/harness-security-scan`. Em ambientes locais privados, o operador pode complementar essa proteção com extensões de runtime (como `harness-security-guard.ts`, mantida localmente fora do pacote público) para interceptar:
 
-## Segredos
+- Remoções recursivas indiscriminadas (`rm -rf /` ou equivalentes).
+- Comandos destrutivos de Git (`git reset --hard`, `git clean -fdx` sem escopo).
+- Invocações de shells reversos remotos.
+- Downloads via curl/wget encadeados diretamente para executores de shell (`curl | bash`).
+- Tentativas de acesso a chaves privadas e pastas de certificados do sistema.
+## Tratamento de segredos
 
-Nunca inclua credenciais, tokens, dados pessoais ou payloads sensíveis em: goals, evidence, session handoff, logs de ferramentas ou documentos de governança. Quando precisar registrar um fato sensível, use uma descrição redigida — por exemplo: "token de integração presente e carregado pelo secret store, nunca o valor".
+Nunca registre chaves privadas, senhas, tokens de API ou dados pessoais em arquivos de especificação, relatórios de teste, handoffs de sessão ou notas de governança.
+
+Caso precise documentar a integração de um serviço confidencial, use descrições redigidas: *"Credencial de integração carregada via secret manager de ambiente; valor não exposto"*.
 
 ## O que o harness NÃO protege
 
-### Não há sandbox de sistema operacional
+### Não há sandbox de sistema operacional no host
+As allowlists e guardrails reduzem substancialmente o risco de enganos, mas **não constituem uma fronteira de segurança no nível do SO**. Qualquer comando aprovado no plano e executado no shell roda com os privilégios do usuário local do computador.
 
-As políticas de permissão reduzem risco, mas **não** são uma fronteira de segurança do sistema operacional. Um comando aprovado e executado no shell tem acesso total ao sistema.
+### Não substitui a revisão e aprovação humana
+O Judge analisa critérios objetivos e os revisores examinam código sob contratos de área, mas a autorização final permanece como prerrogativa e responsabilidade do operador humano.
 
-### Não prova autorização de aplicações reais
-
-O contrato de segurança verifica presença e existência de evidência declarada — ele não prova isolamento multi-tenant (RLS/IDOR) de uma aplicação que não faz parte deste repositório. Esta documentação não reivindica tal prova.
-
-### Não substitui revisão humana
-
-O Judge avalia o trabalho contra critérios objetivos, mas a confirmação final ainda depende do operador. O harness reduz o risco de conclusão prematura — não elimina a necessidade de revisão.
-
-### O guard não cobre tudo
-
-O security guard bloqueia padrões *reconhecidos*, mas não é infalível. A segurança real ainda mora na fase de planejamento e aprovação: revise cada comando do plano antes de aprovar.
+### O guardrail não substitui bom senso de engenharia
+Scanners de padrões cobrem expressões conhecidas, mas não detectam lógicas de negócio maliciosas ou omissões sutis. **A principal barreira de segurança é a leitura atenta do plano pelo desenvolvedor antes de digitar `/prevc run`**.
 
 ## Boas práticas
 
-1. **Revise o plano antes de aprovar.** Todo comando listado no plano será executado — leia cada linha.
-2. **Mantenha a configuração sob controle de versão** e revise as permissões antes de compartilhar.
-3. **Não armazene tokens ou credenciais em arquivos de configuração.** Use variáveis de ambiente.
-4. **Rode `/harness-security-scan` periodicamente** para detectar secrets expostos e permissões excessivas.
-5. **Lembre que o repositório é público** — não comite nada que não deveria ser visível para qualquer pessoa.
+1. **Examine o plano completo antes de aprová-lo:** Certifique-se de que cada comando e arquivo listado corresponde estritamente ao objetivo solicitado.
+2. **Execute `/harness-security-scan` com regularidade:** Identifique permissões excessivas ou credenciais acidentalmente versionadas.
+3. **Mantenha segredos em variáveis de ambiente ou secret stores locais:** Jamais salve tokens em arquivos rastreados pelo Git.
+4. **Desconfie de pacotes desconhecidos:** Verifique a reputação e data de lançamento de qualquer nova biblioteca antes de incluí-la no projeto.

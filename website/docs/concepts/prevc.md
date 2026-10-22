@@ -4,127 +4,122 @@ sidebar_position: 3
 
 # PREVC
 
-PREVC é um contrato comum para trabalho significativo, independente do
-runtime. Ele define as fronteiras de escopo, as transições permitidas, a
-evidência exigida e a confirmação humana; nenhum agent pode substituir essas
-decisões.
+O PREVC é o contrato fundamental de engenharia do harness para tarefas de software. Ele define fronteiras de escopo, transições válidas de estado, evidências obrigatórias e critérios de confirmação humana ou governada.
+
+Nenhum agente de execução possui autoridade para desviar desse fluxo, alterar fases arbitrariamente ou declarar trabalho pronto sem apresentar as evidências exigidas por cada etapa.
 
 ## Quatro fases e sete etapas
 
-As sete etapas do contrato são agrupadas em quatro fases:
+O ciclo divide-se em quatro fases operacionais que agrupam sete etapas sequenciais:
 
-| Fase | Etapas | Limite principal |
+| Fase | Etapas agrupadas | Objetivo e evidência exigida |
 |---|---|---|
-| **Prepare** | `prepare` + `plan` | Descobrir contexto, classificar risco e obter aprovação do plano. |
-| **Execute** | `execute` | Alterar somente os arquivos e objetivos aprovados. |
-| **Validate** | `validate` + `judge` | Executar gates e receber um julgamento independente. |
-| **Confirm** | `refine` + `confirm` | Avaliar a proposta de melhoria e confirmar como operador. |
+| **Prepare** | `prepare` + `plan` | Reconhecimento do repositório, classificação de risco pelo diff acumulado e especificação aprovada pelo operador. |
+| **Execute** | `execute` | Implementação estrita com WIP=1 e posse declarada de arquivos em cada lane. |
+| **Validate** | `validate` + `judge` | Execução do Quality Gate, testes de regressão e emissão do recibo independente do Judge (somente-leitura). |
+| **Confirm** | `refine` + `confirm` | Proposta de melhoria em prosa (Refine) e confirmação formal (humana ou por autoconfirmação governada). |
 
-O agrupamento organiza a responsabilidade de cada fronteira; a sequência
-literal continua sendo `prepare → plan → execute → validate → judge → refine →
-confirm`.
-
-## Limites por fase
-
-1. **Prepare:** o agent inspeciona o repositório, mede o risco e propõe uma
-   especificação clara.
-2. **Execute:** com o plano aprovado, implementa sob WIP=1 e dentro do
-   ownership declarado.
-3. **Validate:** executa verificações reais e submete o resultado ao Judge
-   read-only.
-4. **Confirm:** o operador revisa a evidência e autoriza a conclusão.
-
-## Fluxo visual do ciclo de vida
+A sequência conceitual das sete etapas no contrato PREVC:
 
 ```text
-┌─────────────────┐
-│     PREPARE     │  → Descoberta de contexto, análise de risco e plano em agent-os/specs/
-└────────┬────────┘
-         │ [Aprovação obrigatória do operador humano]
-         ▼
-┌─────────────────┐
-│     EXECUTE     │  → Implementação estrita (WIP=1) nos arquivos de ownership declarado
-└────────┬────────┘
-         │ [Código finalizado]
-         ▼
-┌─────────────────┐
-│    VALIDATE     │  → Gates de qualidade, testes reais e avaliação do Judge (read-only)
-└────────┬────────┘
-         │ [Evidências coletadas e handoff pronto]
-         ▼
-┌─────────────────┐
-│     CONFIRM     │  → Revisão final do operador, refine e conclusão durável
-└─────────────────┘
+prepare → plan → execute → validate → judge → refine → confirm
 ```
 
-## PREVC no OpenCode e no Oh My Pi
+No estado durável gerenciado por `harness-prevc-state.mjs`, esse enquadramento conceitual mapeia diretamente para os estados canônicos da máquina de estados: `prepare` → `awaiting_plan_approval` → `execute` → `validate` → `judge` → `refine` → `awaiting_confirmation` → `complete`.
+![Ciclo de vida do PREVC](/omp-harness-guide/img/diagrams/ciclo-prevc.png)
+*As quatro fases do ciclo PREVC e suas transições controladas.*
 
-O OpenCode funciona aqui como adaptador metodológico e de continuidade:
-organiza convenções de planejamento, artefatos duráveis e handoffs. O Oh My Pi
-é o motor nativo: executa o mesmo contrato com as primitivas do runtime.
+## Tiers e roteador de risco
 
-No OMP, o `scheduler` usa `task` para despachar lanes independentes em uma
-onda `tasks[]`; `hub` coordena mensagens entre agents; `todo` mantém WIP=1 na
-sessão; e `test-runner` pode shardear suítes quando o plano autoriza e os
-arquivos de teste são disjuntos. Extensões nativas observam eventos do runtime,
-mas não transicionam PREVC nem confirmam trabalho.
+Antes da execução, o `harness-risk-router` avalia o escopo e classifica a iniciativa em um de três tiers de governança (`auto`, `sampling` ou `full`). Embora o tier normalmente acompanhe a classificação de risco do diff (`low`, `medium`, `high`), o roteador também considera o estado do gate (um gate não configurado recai em `sampling` e caminhos de alto risco forçam compulsoriamente o tier `full`):
 
-Essas são capacidades de execução, não evidência de velocidade. Use dispatch
-somente quando as lanes tiverem ownership disjunto e dependências explícitas.
+- **Tier `auto` (risco `low`):** Alterações pontuais com baixo diff acumulado em arquivos não sensíveis e com gate full comprovadamente verde e medido. Dispensa leitura prévia de diff.
+- **Tier `sampling` (risco `medium`):** Tarefas médias, gates com métricas indisponíveis ou projetos sem calibração prévia. Dispara amostragens da suíte de testes e validação cruzada.
+- **Tier `full` (risco `high`):** Disparado compulsoriamente se a mudança tocar caminhos críticos (`high_risk_paths` como autenticação, autorização, migrações de banco, infraestrutura ou regras do próprio harness) ou ultrapassar limites seguros de complexidade. Exige auditoria humana do diff e suíte completa.
 
-## Estado durável
+### Red-team obrigatório no tier full
+No tier `full` (ou risco `high`), o script `harness-prevc-state.mjs` recusa compulsoriamente a transição `judge -> refine` caso não exista uma revisão de red-team aprovada, amarrada ao mesmo `sourceHash` do gate e contendo a linha `Red-team: N tentativas` (com N no mínimo 3) e `Verdict: APPROVE`. No ambiente de trabalho do operador, esses testes na superfície alterada são conduzidos pelo agente de segurança do operador; a distribuição pública do harness não inclui o subagente ofensivo `security-analyst`.
 
-### Prepare
+## O que roda em cada fase
 
-Leia o pedido, as regras do projeto, o estado durável e o handoff anterior. Defina objetivo, escopo, não-escopo, critérios de aceite, risco, dependências e o comando de verificação. O plano fica aguardando aprovação quando a tarefa exige decisão do operador.
+![PREVC ponta a ponta](/omp-harness-guide/img/diagrams/prevc-ponta-a-ponta.png)
+*Detalhamento operacional de ponta a ponta de cada fase do PREVC.*
 
-### Execute
+1. **Prepare:** Agentes realizam exploração somente-leitura. O plano formal é elaborado contendo objetivos, não-escopo, arquivos afetados, comandos de verificação e critérios de aceite. O estado para em `awaiting_plan_approval`.
+2. **Execute:** O scheduler despacha lanes para agentes de implementação (`implementer` ou `fixer`), cada um restrito aos seus arquivos declarados.
+3. **Validate:** O Quality Gate completo roda todas as métricas aplicáveis. O agente `judge` avalia o resultado contra os critérios de aceite e gera um recibo em formato JSON.
+4. **Confirm:** O agente `refine` propõe no máximo uma melhoria de padrão arquitetural (sem editar o repositório). O operador revisa o handoff e o relatório de evidências para autorizar a conclusão.
 
-Faça somente o trabalho aprovado. O scheduler pode distribuir unidades independentes, cada uma com dono, dependências e arquivos declarados. WIP=1 mantém uma unidade ativa por vez, mesmo quando há fan-out entre lanes.
+## Micro-loop vs Macro-loop e o teto do fixLoop
 
-### Validate
+Durante o desenvolvimento, falhas em testes ou verificações acionam dois circuitos distintos de correção:
 
-Colete provas que outra pessoa possa repetir: saída de comandos, critérios de aceite observáveis, estado atualizado e, quando aplicável, gate e revisão independente. Falha ou evidência ausente bloqueia o caminho; não é um sinal verde implícito.
+![Gate de qualidade e micro e macro-loops no PREVC](/omp-harness-guide/img/diagrams/prevc-fase-a-fase.png)
+*O Quality Gate atua como sinal operacional entre o micro-loop local e o macro-loop de validação.*
 
-### Confirm
+- **Micro-loop (dentro de Execute):** Um agente especializado (`fixer`) tem direito a exatamente 1 tentativa imediata por shard de teste para ajustar falhas locais triviais antes de devolver o controle ao orquestrador.
+- **Macro-loop (Validate &rarr; Execute):** Quando o Quality Gate ou o Judge reprovam o conjunto integrado, o orquestrador devolve a tarefa para uma nova rodada de implementação.
+- **Teto de rodadas (`fixLoop.maxAttempts`):** O número padrão de ciclos no macro-loop é fixado em **3 tentativas**. O esgotamento do teto é **consultivo**: a transição `validate -> execute` continua sendo aceita pelo orquestrador acompanhada do aviso `fix-loop-exhausted (N/max)` e de diagnóstico da métrica reprovada, permitindo que o trabalho siga sem paradas destrutivas ou abortos involuntários.
 
-No OMP, inicie o PREVC com a descrição da tarefa:
+## O gate como sinal operacional
 
-```text
-/prevc prepare Adicionar endpoint de health check
+O Quality Gate opera como um sinal de trânsito:
+- Um gate verde (`pass`) sinaliza que o código atende às métricas mínimas para prosseguir à avaliação do Judge.
+- Um gate vermelho (`fail`) **barra exclusivamente a conclusão** e a transição para `awaiting_confirmation`. Ele não encerra a sessão, não destrói o terminal nem reverte alterações; o estado permanece aberto para que as correções sejam efetuadas.
+
+## O status blocked
+
+O status `blocked` não é gerado automaticamente por falhas de teste ou reprovação de gate. Ele só é alcançado no ciclo de vida por meio de uma transição explícita para `blocked` informando a justificativa `--blocker <texto>` (acionada pelo operador ou pelo orquestrador ao encontrar um impedimento real de escopo) ou mediante recibo formal do Judge com veredito `block` listando `blockingCriteria`.
+## Autoconfirmação com critérios (auto-confirm)
+
+Para tarefas rotineiras, o PREVC suporta a transição autônoma `awaiting_confirmation → complete` via ação `auto-confirm`.
+
+Por padrão, a política é **estritamente desativada** (`autoConfirm: false` em `agent-os/prevc-autonomy.json`). Quando habilitada pelo operador, a aprovação automática exige compulsoriamente as seguintes condições simultâneas (*fail-closed*):
+
+1. **Política de autonomia:** arquivo `agent-os/prevc-autonomy.json` presente com `autoConfirm: true` e `maxRevisionCycles` válido (0 a 10).
+2. **Orçamento de revisões:** contagem de ciclos `revision_requested` não ultrapassa `maxRevisionCycles`.
+3. **Recibo do Judge:** veredito formal `accept` sem pendências em `blockingCriteria`.
+4. **Quality Gate Full verde e fresco:** relatório verde (`pass`), amarrado ao mesmo `sourceHash` da árvore inspecionada.
+5. **Revisão independente aprovada:** parecer nos arquivos de review do projeto posterior ao validate contendo `Verdict: APPROVE`.
+6. **Handoff durável e recente:** arquivo regular `session-handoff.md` presente e atualizado após a entrada em `awaiting_confirmation`.
+### Governança em tarefas de tier alto
+Mesmo quando o repositório possui `autoConfirm: true`, a boa prática de governança determina que em iniciativas classificadas no tier `full` (ou com etiqueta `risk:high`), o operador humano desative temporariamente a autoconfirmação para realizar a inspeção visual final antes da entrega.
+
+## Comandos do ciclo de vida
+
+O comando slash `/prevc` fornece os pontos de entrada para planejamento e execução:
+
+Início do planejamento de uma tarefa:
+```bash
+/prevc prepare Adicionar autenticação com token de sessão
 ```
 
-`/prevc prepare` faz parte do pacote público instalado em
-`~/.omp/agent/commands/`. Ele executa a descoberta, classifica o risco e
-inicia o planejamento via `planner`, parando em
-`awaiting_plan_approval`.
-
-Nada é editado antes da aprovação explícita; reconhecimento read-only é sempre
-permitido. A exceção de escrita pré-aprovação é o próprio pipeline de
-planejamento: o `planner` pode criar os artefatos canônicos em
-`agent-os/specs/<slug>/` (spec.md, plan.md, verification.md, decisions.md,
-tickets/, research.md, prototype/).
-
-Depois que você aprovar o plano, em linguagem natural ou com:
-
-```text
+Após aprovação do plano pelo operador, o disparo da execução autônoma:
+```bash
 /prevc run
 ```
 
-o OMP executa dentro do escopo aprovado. O scheduler usa `task`, `tasks[]` e
-`hub` para o dispatch nativo, valida o resultado, entrega o handoff e para em
-`awaiting_confirmation` para a confirmação do operador.
+A confirmação final ou solicitação de revisão em `awaiting_confirmation` é feita pelo operador em linguagem natural no chat ("confirmado", "revisar") ou diretamente via script de estado:
 
-Uma instrução para executar um plano ou spec **nomeado** de ponta a ponta já é
-a autorização do run autônomo: não há aprovação por task; o run para uma única
-vez em `awaiting_confirmation` para o spec inteiro.
+```bash
+# Confirmar conclusão
+node ~/.omp/agent/scripts/harness-prevc-state.mjs transition --to complete --operator-action confirm
 
-- Execute apenas o escopo aprovado.
-- Mantenha WIP=1 por unidade ativa.
-- Trate trabalho adjacente como `not_started`.
-- Valide com evidência real e atual.
-- Não confirme sem revisão do operador e handoff.
+# Solicitar revisão com motivo
+node ~/.omp/agent/scripts/harness-prevc-state.mjs transition --to revision_requested --operator-action revise
+```
+## O que isto prova e o que não prova
+
+### O que prova
+- Que o fluxo seguiu uma ordem auditável sem pular do pedido diretamente para a escrita de código.
+- Que o escopo foi delimitado antes da execução e verificado contra critérios formais.
+- Que a validação foi executada por agentes e ferramentas desvinculados do autor do código.
+
+### O que NÃO prova
+- Não prova que a solução arquitetural escolhida é a mais elegante ou escalável do mercado.
+- Não elimina a necessidade de julgamento de valor de produto por parte do desenvolvedor.
+- Não garante que branches externas ou ambientes remotos aceitarão a alteração sem conflitos de rede ou credenciais.
 
 ## Próximo passo
 
-Veja [WIP=1](./wip-one) para a disciplina de foco ou [Evidência e Handoff](./evidence-and-handoff) para o formato das provas.
+Aprofunde-se no controle de foco em [WIP=1](./wip-one) ou veja como as evidências são estruturadas em [Evidência e Handoff](./evidence-and-handoff).

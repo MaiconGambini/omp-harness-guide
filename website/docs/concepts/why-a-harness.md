@@ -4,6 +4,8 @@ sidebar_position: 1
 
 # Por que um harness?
 
+O conceito de harness estabelece a camada de governança, restrições em disco e verificações determinísticas necessária para transformar assistentes de IA em ferramentas de engenharia confiáveis.
+
 Quando desenvolvedores começam a usar assistentes de IA diretamente no terminal, deparam-se rapidamente com quatro falhas estruturais:
 
 1. **Edições descontroladas em múltiplos arquivos (runaway edits):** O agente tenta resolver um problema pontual e sai modificando dezenas de módulos não relacionados, criando diffs enormes e poluindo a árvore de trabalho.
@@ -19,10 +21,11 @@ O harness existe para transformar a assistência de IA em um fluxo de engenharia
 |---|---|
 | **Edições descontroladas:** Altera dezenas de arquivos sem fronteira definida, gerando diffs gigantescos e imprevisíveis. | **Escopo delimitado:** Declara e restringe a posse de arquivos por lane; edições ocorrem apenas nos alvos autorizados. |
 | **Build quebrado:** Afirma que a tarefa está pronta sem verificar se o projeto ainda compila ou empacota. | **Verificação obrigatória:** Bloqueia a conclusão até que checagens de tipos, linters e builds passem com código de saída zero. |
-| **Alucinação de testes:** Inventa resultados de testes ("todos os testes passaram") sem executar comando algum no terminal. | **Evidência real:** Exige saída capturada do terminal e degraus de evidência auditáveis antes de declarar sucesso. |
+| **Alucinação de testes:** Inventa resultados de testes ("todos os testes passaram") sem executar comando algum no terminal. | **Evidência real:** Exige saída capturada do terminal, Quality Gate medido e degraus de evidência auditáveis antes de declarar sucesso. |
 | **Perda de contexto:** Cada nova sessão começa do zero, esquecendo decisões, bloqueios e tarefas pendentes. | **Continuidade durável:** Mantém estado em disco (WIP=1), registra bloqueios reais e produz handoff limpo para a próxima sessão. |
 
 > **Contrato PREVC:** Somente após estabelecer essas garantias básicas é que introduzimos o ciclo formal: `prepare → plan → execute → validate → judge → refine → confirm`, onde cada transição exige a evidência da etapa anterior.
+
 ## O que o harness responde
 
 Antes de uma mudança importante, o harness responde:
@@ -36,15 +39,17 @@ Antes de uma mudança importante, o harness responde:
 
 ## Como isso é implementado no Oh My Pi
 
-- **Estado** — `todo` mantém a unidade WIP=1; `harness-prevc-state.mjs` grava a fase em arquivo durável, com lock local e sobrevivência entre sessões.
-- **Despacho** — o `scheduler` usa `task` com uma onda `tasks[]` e coordena com `hub`; os resultados são entregues automaticamente.
-- **Escala** — o runtime nativo permite fan-out de até 32 subagentes e sharding paralelo de testes quando as lanes têm propriedade disjunta.
-- **Rastreio** — `harness-omp-trace.ts` registra um envelope redigido a partir dos eventos nativos, sem ler corpos de mensagens nem bancos locais.
+- **Estado durável** — `todo` mantém a unidade WIP=1; `harness-prevc-state.mjs` grava a fase em arquivo durável, com lock local e persistência entre sessões.
+- **Despacho governado** — o `scheduler` usa `task` com uma onda `tasks[]` e coordena com `hub`; os resultados são entregues automaticamente.
+- **Quality Gate integrado** — avalia métricas estáticas, testes, evals e segurança com rastreamento explícito de cobertura (`Measured: N/M`).
+- **Revisão multicamadas** — revisores em famílias diferentes de modelo analisam diffs sob contratos por área (`docs/review.md`) e tetos de convergência.
+- **Escala paralela** — o runtime nativo permite fan-out de subagentes e sharding paralelo de testes quando as lanes têm propriedade disjunta.
+- **Rastreio auditável** — `harness-omp-trace.ts` registra um envelope redigido a partir dos eventos nativos, sem ler corpos de mensagens nem bancos locais.
 
 ## O que o harness não faz
 
-- Não torna o agente autônomo.
-- Não substitui revisão humana.
+- Não torna o agente infalível nem autônomo por padrão.
+- Não substitui revisão e responsabilidade humana.
 - Não fornece sandbox de sistema operacional.
 - Não torna a qualidade automática; exige evidência verificável e estado persistido.
 
