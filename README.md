@@ -17,12 +17,20 @@ plano declara lanes independentes e ownership sem sobreposição.
 O Harness Oh My Pi organiza o trabalho com agentes em ciclos previsíveis de
 planejamento, execução, validação, avaliação e entrega. Cada sessão mantém
 estado durável (`harness-prevc-state.mjs`), respeita a regra WIP=1 e registra
-evidências mensuráveis antes de qualquer handoff. Eventos nativos do Oh My Pi
-(`pi.on`) alimentam um rastreamento redigido e compartilhado entre sessões.
-Os comandos do pacote são instalados em `~/.omp/agent/commands/`; não há
-comandos públicos `omp:*`.
+evidências mensuráveis antes de qualquer handoff. O gate atua como sinal de prontidão
+com métricas auditadas (`Measured: N/M`), evals e validação de segurança. O code
+review exige revisores de família de modelo distinta da do autor, regras por área e
+limite estrito no loop de autocorreção. No onboarding, o perfil do projeto e o
+segundo cérebro (Obsidian + Graphify) são carregados automaticamente, com suporte a times
+especializados via `/maestri-team`. Eventos nativos do Oh My Pi alimentam o rastreamento
+redigido entre sessões. Os comandos do pacote são instalados em `~/.omp/agent/commands/`;
+não há comandos públicos `omp:*`.
 
 - [Documentação em português](https://maicongambini.github.io/omp-harness-guide/)
+- [Quality Gate medido](https://maicongambini.github.io/omp-harness-guide/docs/concepts/quality-gate)
+- [Code Review](https://maicongambini.github.io/omp-harness-guide/docs/concepts/code-review)
+- [Onboarding de Novo Projeto](https://maicongambini.github.io/omp-harness-guide/docs/guides/new-project)
+- [Time Maestri](https://maicongambini.github.io/omp-harness-guide/docs/guides/maestri-team)
 - [Repositório](https://github.com/MaiconGambini/omp-harness-guide)
 
 ## English
@@ -33,6 +41,12 @@ steps are grouped into four phases: Prepare (`prepare + plan`), Execute
 Durable state, evidence, and session handoff belong to the contract, not to a
 product-performance claim.
 
+The quality gate operates as a readiness signal with audited metrics (`Measured: N/M`),
+safety evals, and authorization checks. Multi-agent code review pairs authors with
+reviewers from different model families, area-based rules, and bounded fix loops.
+Project onboarding automatically detects technical stacks and loads second-brain
+context (Obsidian + graphify), with specialist teams provisioned through `/maestri-team`.
+
 Here, **PREVC is the common contract**; **OpenCode is the methodological and
 continuity adapter** for conventions, artifacts, and handoffs; and **OMP is
 the native engine**, using `task`, `tasks[]`, `hub`, `todo`, and runtime
@@ -40,6 +54,10 @@ extensions. Sharding applies only when the plan declares independent lanes with
 non-overlapping ownership.
 
 - [English documentation](https://maicongambini.github.io/omp-harness-guide/en/)
+- [Measured Quality Gate](https://maicongambini.github.io/omp-harness-guide/en/docs/concepts/quality-gate)
+- [Code Review](https://maicongambini.github.io/omp-harness-guide/en/docs/concepts/code-review)
+- [New Project Onboarding](https://maicongambini.github.io/omp-harness-guide/en/docs/guides/new-project)
+- [Maestri Team](https://maicongambini.github.io/omp-harness-guide/en/docs/guides/maestri-team)
 - [Repository](https://github.com/MaiconGambini/omp-harness-guide)
 
 ## Desenvolvimento local do site / Local site development
@@ -65,8 +83,8 @@ npm ci --ignore-scripts --prefix website
 
 ## Distribuição OMP / OMP distribution
 
-`omp/agent/` contém os arquivos reais gerenciados pelo Oh My Pi: agents,
-commands, scripts, extensão, configuração e skills gerais. O pacote não inclui
+`omp/agent/` contém os 299 arquivos reais gerenciados pelo Oh My Pi: 25 agents,
+110 skills, 21 commands, 55 scripts, 2 extensões nativas e configuração pública. O pacote não inclui
 estado de runtime, bancos locais, evidências privadas, skills de recon,
 pentest, exploração, WSTG ou playbooks ofensivos; mantém somente controles
 defensivos necessários ao próprio harness.

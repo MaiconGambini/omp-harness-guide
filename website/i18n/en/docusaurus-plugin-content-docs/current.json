@@ -7,21 +7,41 @@
     "message": "Getting Started",
     "description": "The label for the Getting Started category"
   },
+  "sidebar.tutorialSidebar.category.Primeiros Passos": {
+    "message": "Getting Started",
+    "description": "The label for the Primeiros Passos category"
+  },
   "sidebar.tutorialSidebar.category.Conceitos": {
     "message": "Concepts",
     "description": "The label for the Concepts category"
+  },
+  "sidebar.tutorialSidebar.category.Conceitos Essenciais": {
+    "message": "Core Concepts",
+    "description": "The label for the Conceitos Essenciais category"
   },
   "sidebar.tutorialSidebar.category.Guias": {
     "message": "Guides",
     "description": "The label for the Guides category"
   },
+  "sidebar.tutorialSidebar.category.Guias Práticos": {
+    "message": "Practical Guides",
+    "description": "The label for the Guias Práticos category"
+  },
   "sidebar.tutorialSidebar.category.Referência": {
     "message": "Reference",
     "description": "The label for the Reference category"
   },
+  "sidebar.tutorialSidebar.category.Referência Completa": {
+    "message": "Complete Reference",
+    "description": "The label for the Referência Completa category"
+  },
   "sidebar.tutorialSidebar.category.Adoção": {
     "message": "Adoption",
     "description": "The label for the Adoption category"
+  },
+  "sidebar.tutorialSidebar.category.Adoção & FAQ": {
+    "message": "Adoption & FAQ",
+    "description": "The label for the Adoção & FAQ category"
   },
   "sidebar.tutorialSidebar.category.Solução de problemas": {
     "message": "Troubleshooting",
