@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: TypeScript/JavaScript standards for type-safe, maintainable code.
+description: "Provide baseline TypeScript coding standards. Use when writing type-safe application code. Do NOT use for complex type gymnastics (use typescript-advanced-types)."
 ---
 
 # TypeScript/JavaScript Standards

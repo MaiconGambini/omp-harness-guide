@@ -1,6 +1,6 @@
 ---
 name: harness-feature-state
-description: Normalize feature state across feature_list.json and Markdown task files. Enforce WIP=1, evidence for passing, and blocker reasons.
+description: "Normalizes feature status across feature_list.json and task specs. Use when recording verified progress or task blockers. Do NOT use for narrative progress logs (use harness-progress-log)."
 ---
 
 # Harness Feature State

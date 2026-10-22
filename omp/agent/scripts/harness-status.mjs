@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { cursorRoot, globalOpenCodeRoot, pathExists } from "./harness-common.mjs"
 import { checkReportShape, makeGit, readJsonIfExists, REPORT_DIR, sourceHash } from "./harness-quality-core.mjs"
 import { HANDOFF_PATH, inspectState, latestFullGateReport, PHASES } from "./harness-prevc-state.mjs"
+import { minimumEvidenceRung, readWindow } from "./harness-findings.mjs"
 // The whole composition is exported and injectable (runGit / sourceHash) so the WARN and
 // gaps[] contract is testable without shelling out. CLI flags are unchanged: --json
 // (default), --markdown, --exit-code (non-PASS -> exit 1; kept for CI).
@@ -89,6 +90,17 @@ export function readRedteamSurface(root, gateReport) {
   if (!row) return { status: "unavailable", reason: "newest full gate report has no redteam_quickcheck row" }
   return { status: "ok", state: row.status, value: row.value ?? null }
 }
+export function readEvidenceRungSurface(root, gateReport, deps = {}) {
+  const window = (deps.readWindow ?? readWindow)({ root, runs: 1 })
+  const report = gateReport && typeof gateReport === "object" ? gateReport : null
+  return (deps.minimumEvidenceRung ?? minimumEvidenceRung)(window, {
+    root,
+    report,
+    tier: "full",
+    git: deps.runGit ? { text: (args) => deps.runGit(root, args) } : undefined,
+  })
+}
+
 
 export function composeStatus(root = process.cwd(), deps = {}) {
   const runGit = deps.runGit ?? defaultRunGit
@@ -201,6 +213,11 @@ export function composeStatus(root = process.cwd(), deps = {}) {
   status.fallbackEvents = readFallbackSurface(root)
   status.capabilities = readCapabilitiesSurface(root)
   status.redteam = readRedteamSurface(root, parsedReport)
+  status.evidence_rung_min = readEvidenceRungSurface(root, parsedReport, {
+    readWindow: deps.readWindow,
+    minimumEvidenceRung: deps.minimumEvidenceRung,
+    runGit,
+  })
 
   status.globalOpenCodeConfigExists = pathExists(path.join(globalOpenCodeRoot(), "opencode.jsonc"))
   status.globalCursorExists = pathExists(cursorRoot())

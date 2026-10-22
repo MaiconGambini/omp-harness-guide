@@ -1,6 +1,6 @@
 ---
 name: harness-agent-permissions
-description: Use when assigning safe permissions to OpenCode/Cursor agents and subagents based on planner, generator, evaluator, reviewer, or security roles.
+description: "Configures least-privilege tool permissions for agent roles. Use when defining allowed tools and bash permissions for roles. Do NOT use for vulnerability scanning (use harness-security-scan)."
 ---
 
 # Harness Agent Permissions

@@ -1,11 +1,11 @@
 ---
 name: harness-session-start
-description: Generic harness session start. Use at session start to discover instructions, state, task, startup command, and declare active work without repo-specific assumptions.
+description: "Discover context, instructions, and startup commands. Use when starting a new session or declaring active work. Do NOT use for writing handoffs (use harness-session-handoff)."
 ---
 
 # Harness Session Start
 
-Run at session start. Stop at first hard failure.
+Run at session start. Sinais de startup ou gate são reportados e nunca abortam o trabalho.
 
 ## Startup Sequence
 
@@ -28,17 +28,17 @@ Run at session start. Stop at first hard failure.
 5. Read handoff if present: `docs/harness/session-handoff.md`.
 6. Locate startup command with `harness-startup-path`:
    - `init.ps1`, `init.sh`, `make check`, package script, or documented command.
-7. Run the discovered startup command if safe and present. If it fails, record exact error in the progress file when one exists, then stop.
+7. Run the discovered startup command if safe and present. If it fails, record the error in progress/state and report it as a signal, then continue with the operator's request.
 8. Run `git log --oneline -3` when inside a git repo.
 9. **Read the quality posture.** `agent-os/quality-thresholds.json` (phase, which metrics are
    blocking) and the newest `docs/harness/quality/*.json`. This is the measured half of the session's
-   starting context and the harness was blind to it before v1.2 — a session that starts new feature
-   work on top of a red gate is how the red becomes permanent.
-   - **Red posture is stated first, and becomes the active task** unless the operator overrides.
+   starting context: it tells the agents what to look at, not whether they may work.
+   - **Red posture is reported as a signal on the `Quality:` line as context** (e.g. `Quality: red (regression_suite 1 > 0; sinal, não bloqueia trabalho)`). It is never substituted for the operator's request, and never a reason to abort, refuse exploration, or stop coding.
    - A **stale, missing or `unconfigured`** report is stated as such. Never read silence as green.
-   - A broken gate (exit 2) is a harness blocker to report, **not** an abort condition. The session
-     still starts.
+   - A non-green gate withholds only delivery claims (confirming completion or readiness for production); it does not stop work.
 10. Select exactly one active task if durable feature state exists. If none exists, declare no durable active task.
+11. Resolve the session identity from the durable PREVC record. Read the matching validated record with `node ~/.omp/agent/scripts/harness-session-store.mjs --read --root "$PWD" --session-id "$SESSION_ID"`. Create the record from the inspected identity and phase when it is absent.
+12. Use that record for PREVC phase, lane, blocker, active-task, and evidence context. `docs/harness/session-handoff.md` remains the handoff authority; prior-session evidence never supplies lifecycle authority.
 
 ## Output
 
@@ -60,7 +60,7 @@ Examples:
 ```
 Global context: loaded from ~/.config/opencode/docs/context.md
 Quality: phase B · gate green (2026-08-10 full) · mutation 69.6% >= 69.5% · 1 unavailable (boundaries)
-Quality: phase A · gate RED (2026-08-10 local) · regression_suite 2 failing · active task is now this
+Quality: phase A · gate RED (2026-08-10 local) · regression_suite 1 > 0 (sinal, não bloqueia trabalho)
 Quality: unconfigured — no agent-os/quality-thresholds.json. Nothing is measured here; run harness-project-calibration.
 ```
 
@@ -68,13 +68,15 @@ If the shared file is missing or unreadable, use:
 
 `Global context: unavailable (gap)`
 
-The global context gap is recoverable and visible; existing project state/startup failure rules remain hard failures.
+The global context gap is recoverable and visible; reported signals provide diagnostic context while the session proceeds.
 
-## Abort Conditions
+## Sinais reportados
 
-- Startup command fails.
-- Progress or feature state exists but is unreadable.
-- More than one task is `in_progress`.
+These conditions are recorded and reported as signals, never used as hard aborts or excuses to stop work:
+- Startup command fails (reported with error message).
+- Progress or feature state exists but is unreadable or conflicting.
+- More than one task is `in_progress` (reported as diagnostic notice).
+- Gate is red, stale, unconfigured, or broken (reported on `Quality:` line).
 
-Do not assume `init.ps1`, `feature_list.json`, or `.specs/project/STATE.md` exist.
+The session proceeds with the operator's requested objective. Do not assume `init.ps1`, `feature_list.json`, or `.specs/project/STATE.md` exist.
 

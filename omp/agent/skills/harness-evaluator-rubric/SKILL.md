@@ -1,6 +1,6 @@
 ---
 name: harness-evaluator-rubric
-description: Build a task-specific evaluator rubric from the active contract before Judge phase. Do not self-judge; produce rubric plus evidence.
+description: "Builds evidence-backed rubrics before the Judge phase. Use when establishing criteria to assess task completion. Do NOT use for self-evaluating changes (use harness-quality-gate)."
 ---
 
 # Harness Evaluator Rubric

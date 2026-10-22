@@ -1,6 +1,6 @@
 ---
 name: harness-rule-enforce
-description: Turn an operator-approved prose rule from the learned-rules ledger into an enforced rule (lint | test | gate_metric) as a normal, dispatchable lane. Use when an active ledger rule with enforcement: "prose" is approved for promotion — triage whether it is mechanically checkable, emit a tracer-bullet ticket, and never patch the project's lint rule yourself.
+description: "Promote approved prose rules into enforced lint or test tickets. Use when an active ledger rule is approved for automation. Do NOT use for rule discovery (use harness-refine)."
 ---
 
 # Harness Rule Enforce
@@ -83,14 +83,32 @@ The produced lane must deliver:
 
 Without the fixture the promotion is a claim. With it, `enforced_fraction` counts something real.
 
-## 4. Update the ledger, after the lane lands
+## 4. Fixed-slot promotion and deletion test
+
+The scheduler treats `max_active_rules_per_target` as a fixed slot count for each target. Count only
+rules with `status: "active"` and `enforcement: "lint" | "test" | "gate_metric"`.
+
+- If the target has a free slot, admit the candidate.
+- If the target is full, rank the weakest rule by fewest citations, oldest approval, then existing
+  linter coverage. Evict that rule only when the candidate is stronger; record `displaced_by` on the
+  retirement and admit the candidate in the same confirmed rulebook write.
+- If the candidate does not beat the weakest rule, reject it and preserve its reason in
+  `agent-os/rejected-rules.json`. Do not exceed the slot count.
+- The promotion lane must include a deletion test: the fixture passes with the rule absent, fails with
+  the rule present, and passes again after the rule or enforcement is deleted. This proves the check is
+  coupled to the promoted rule.
+
+All rulebook mutations use `scripts/harness-learned-rules.mjs`; this skill never adds a second write
+path.
+
+## 5. Update the ledger, after the lane lands
 
 `enforcement` moves `prose → lint | test | gate_metric`, and the record gains a pointer to the config
 file and the fixture. **The scheduler writes it, after operator confirmation, in the rulebook commit**
 — same path and same ordering as any other ledger write (D13: gate → trailer → code commit → rulebook
 commit). This skill never writes the ledger, the standards, or the lint config.
 
-## 5. When a promotion fails
+## 6. When a promotion fails
 
 If the lane cannot produce a rule that flags the fixture without flagging clean code, it returns
 `blocked: not mechanically checkable` and the ledger records `enforcement: "prose"` with
@@ -105,6 +123,8 @@ than prose nobody automated.
 | the produced lane's verification shows the check failing on the fixture before the rule exists and passing after (fail-first) | §3 — "fails before the rule exists and passes after", fixture drawn from `provenance.source_findings` |
 | a judgement rule is classified permanently-prose, is marked so, and is excluded from `enforced_fraction`'s denominator | §1 — `prose_permanent: true` plus the denominator exclusion |
 | a numeric rule is refused as prose and routed to `gate_metric` or rejected (invariant 13) | §1 — the numeric bar row |
-| a rule that cannot be checked without false positives returns `blocked` and is not shipped | §5 — `blocked: not mechanically checkable`, no noisy rule shipped |
-| after a promotion lands, the ledger's `enforcement` and its config/fixture pointers are written in the rulebook commit, after the code commit — never by this skill | §4 — scheduler writes it in the rulebook commit (D13 ordering); this skill never writes |
+| a rule that cannot be checked without false positives returns `blocked` and is not shipped | §6 — `blocked: not mechanically checkable`, no noisy rule shipped |
+| after a promotion lands, the ledger's `enforcement` and its config/fixture pointers are written in the rulebook commit, after the code commit — never by this skill | §5 — scheduler writes it in the rulebook commit (D13 ordering); this skill never writes |
+| promotion evicts before admission and the deletion test proves coupling | §4 — fixed slots, weakest-rule eviction, and absent/present/deleted fixture checks |
 | the project's existing lint command — discovered by `harness-startup-path`, run by `harness-clean-handoff` — now flags the recorded violation; the promotion is picked up by the automation that already exists, not a new runner | intro and §2 — the emitted ticket's verification command is the existing lint command, verbatim |
+

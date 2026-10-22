@@ -18,6 +18,13 @@ Dispatch the `scheduler` agent (via the `task` tool) in its Planning role. Every
 
 `docs/superpowers/plans/` and `writing-plans` are not PREVC planning destinations.
 
+## Size routing
+
+Before planning ceremony, run `node ~/.omp/agent/scripts/harness-size-gate.mjs --objective "$ARGUMENTS" --files <comma-separated-files> --json` (OpenCode:
+`node "$env:USERPROFILE\.config\opencode\scripts\harness-size-gate.mjs" --objective "$ARGUMENTS" --files <comma-separated-files> --json`).
+For `fast-path` (simple one-file work), execute the objective directly with focused verification; do not dispatch
+`scheduler`, open PREVC, or create planning/panel ceremony. For `prevc` (`medium` or `full`), continue the
+planner/PREVC pipeline below. The gate result must be rendered in the reply contract.
 Upstream routing — resolve the idea before planning:
 
 1. **Clarify.** If the input is an idea rather than an objective, run `skill://brainstorming` first: the idea becomes a goal plus observable acceptance criteria. Never plan against a vague idea.

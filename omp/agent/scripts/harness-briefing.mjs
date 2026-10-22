@@ -61,7 +61,7 @@ export function activeRules(rulesText) {
   const rules = Array.isArray(parsed?.rules) ? parsed.rules : []
   return rules
     .filter((rule) => rule && rule.status === "active")
-    .map((rule) => ({ id: rule.id ?? null, statement: rule.statement ?? "", target: rule.target ?? null }))
+    .map((rule) => ({ id: rule.id ?? null, text: rule.text ?? "", target: rule.target ?? null }))
 }
 
 export function buildBriefing(root) {
@@ -127,7 +127,7 @@ export function renderBriefing(briefing) {
   block("Blockers", sections.blockers)
   block("Verified now", sections.verified)
   block("Recent decisions", sections.decisions)
-  block("Active rules", sections.rules.map((rule) => `${rule.id ? `[${rule.id}] ` : ""}${rule.statement}${rule.target ? ` (${rule.target})` : ""}`))
+  block("Active rules", sections.rules.map((rule) => `${rule.id ? `[${rule.id}] ` : ""}${rule.text}${rule.target ? ` (${rule.target})` : ""}`))
   out.push("_The checkout, tests and runtime outrank this briefing. Treat any conflict as a finding, not a fact._")
   return out.join("\n")
 }

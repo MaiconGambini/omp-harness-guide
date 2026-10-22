@@ -1,6 +1,6 @@
 ---
 name: backend-security-coder
-description: Expert in secure backend coding practices specializing in input validation, authentication, and API security. Use PROACTIVELY for backend security implementations or security code reviews.
+description: "Implements secure backend coding patterns and API defenses. Use when writing server-side input validation and auth controls. Do NOT use for frontend security (use frontend-security-coder)."
 risk: unknown
 source: community
 date_added: '2026-02-27'

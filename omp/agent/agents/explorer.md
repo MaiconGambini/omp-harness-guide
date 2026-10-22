@@ -20,7 +20,7 @@ description: >-
 
   <commentary>
 
-  Broad search is exactly what this role is for, and it keeps the scheduler's context
+  Broad search is exactly what recon is for, and it keeps the scheduler's context
   free. Read-only, cheapest model tier, evidence not opinion.
 
   </commentary>

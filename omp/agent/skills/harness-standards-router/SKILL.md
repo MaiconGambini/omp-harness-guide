@@ -1,3 +1,7 @@
+---
+name: harness-standards-router
+description: "Load project and global coding standards. Use when preparing PREVC plans or starting implementation. Do NOT use for stack technology detection (use harness-stack-router)."
+---
 # Harness Standards Router
 
 Load project standards before PREVC planning or implementation.

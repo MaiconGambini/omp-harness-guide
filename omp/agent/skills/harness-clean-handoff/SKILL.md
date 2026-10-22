@@ -1,6 +1,6 @@
 ---
 name: harness-clean-handoff
-description: Generic harness clean handoff. Use before ending a session to update evidence, progress, handoff, run discovered verification, and show git status.
+description: "Conducts a clean session handoff with progress and verification. Use when ending a work session or transferring context. Do NOT use for mid-session task tracking (use harness-feature-state)."
 ---
 
 # Harness Clean Handoff

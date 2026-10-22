@@ -1,6 +1,6 @@
 ---
 name: uv-package-manager
-description: "Master the uv package manager for fast Python dependency management, virtual environments, and modern Python project workflows. Use when setting up Python projects, managing dependencies, or optimi..."
+description: "Manage Python virtual environments and dependencies with uv. Use when managing Python packages or lockfiles. Do NOT use for Python application code (use python-patterns)."
 risk: unknown
 source: community
 date_added: "2026-02-27"

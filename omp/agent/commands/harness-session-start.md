@@ -13,5 +13,8 @@ Steps:
 - Discover the startup command via `skill://harness-startup-path` and run it if safe. If `scripts/harness-briefing.mjs` exists, run `node scripts/harness-briefing.mjs` to load a small path-scoped, sourceHash-stamped briefing instead of re-reading every state file; treat a stale or unavailable briefing as a gap to name, never a pass.
 - Run `git log --oneline -3` in a git repo.
 - Enforce WIP=1 with the `todo` tool when durable state exists: select the single active task and declare it as — `Active task: [feat-id or session-only] — [title]. AC: [observable criteria].`
+- Resolve `SESSION_ID` from the durable lifecycle inspect result. Do not mint a second identity.
+- Read the validated record with `node ~/.omp/agent/scripts/harness-session-store.mjs --read --root "$PWD" --session-id "$SESSION_ID"`. If the record is absent, create it from the inspected PREVC phase and session identity with the store's `--create` adapter before continuing.
+- Treat the record as the harness-owned source for lane, phase, blocker, active-task, and evidence context. Do not query ai-memory for handoff state.
 
-If startup fails, record the exact error in the progress file when available and stop. Do not assume `init.ps1` or current repo paths.
+If startup fails or the gate is red/stale, record the exact error in the progress file when available, report it on the `Quality:` line as a signal, and continue with the operator's request: exploring, analysing, and coding are never stopped by it; only delivery claims ("done", "production-ready") wait for a green gate. Do not assume `init.ps1` or current repo paths.

@@ -1,6 +1,6 @@
 ---
 name: emil-design-eng
-description: This skill encodes Emil Kowalski's philosophy on UI polish, component design, animation decisions, and the invisible details that make software feel great.
+description: "Apply UI polish, animation physics, and micro-interaction craft. Use when designing animations, interactions, or component details. Do NOT use for backend services or system architecture."
 ---
 
 # Design Engineering
@@ -146,53 +146,7 @@ The perception of speed matters as much as actual speed. Easing amplifies this: 
 
 ## Spring Animations
 
-Springs feel more natural than duration-based animations because they simulate real physics. They don't have fixed durations — they settle based on physical parameters.
-
-### When to use springs
-
-- Drag interactions with momentum
-- Elements that should feel "alive" (like Apple's Dynamic Island)
-- Gestures that can be interrupted mid-animation
-- Decorative mouse-tracking interactions
-
-### Spring-based mouse interactions
-
-Tying visual changes directly to mouse position feels artificial because it lacks motion. Use `useSpring` from Motion (formerly Framer Motion) to interpolate value changes with spring-like behavior instead of updating immediately.
-
-```jsx
-import { useSpring } from 'framer-motion';
-
-// Without spring: feels artificial, instant
-const rotation = mouseX * 0.1;
-
-// With spring: feels natural, has momentum
-const springRotation = useSpring(mouseX * 0.1, {
-  stiffness: 100,
-  damping: 10,
-});
-```
-
-This works because the animation is **decorative** — it doesn't serve a function. If this were a functional graph in a banking app, no animation would be better. Know when decoration helps and when it hinders.
-
-### Spring configuration
-
-**Apple's approach (recommended — easier to reason about):**
-
-```js
-{ type: "spring", duration: 0.5, bounce: 0.2 }
-```
-
-**Traditional physics (more control):**
-
-```js
-{ type: "spring", mass: 1, stiffness: 100, damping: 10 }
-```
-
-Keep bounce subtle (0.1-0.3) when used. Avoid bounce in most UI contexts. Use it for drag-to-dismiss and playful interactions.
-
-### Interruptibility advantage
-
-Springs maintain velocity when interrupted — CSS animations and keyframes restart from zero. This makes springs ideal for gestures users might change mid-motion. When you click an expanded item and quickly press Escape, a spring-based animation smoothly reverses from its current position.
+For spring physics parameters, bounce calculations, and velocity maintenance, see `references/spring-physics.md`.
 
 ## Component Building Principles
 
@@ -347,137 +301,9 @@ useEffect(() => {
 }, []);
 // <div data-mounted={mounted}>
 ```
+## Advanced CSS Animation Techniques
 
-## CSS Transform Mastery
-
-### translateY with percentages
-
-Percentage values in `translate()` are relative to the element's own size. Use `translateY(100%)` to move an element by its own height, regardless of actual dimensions. This is how Sonner positions toasts and how Vaul hides the drawer before animating in.
-
-```css
-/* Works regardless of drawer height */
-.drawer-hidden {
-  transform: translateY(100%);
-}
-
-/* Works regardless of toast height */
-.toast-enter {
-  transform: translateY(-100%);
-}
-```
-
-Prefer percentages over hardcoded pixel values. They are less error-prone and adapt to content.
-
-### scale() scales children too
-
-Unlike `width`/`height`, `scale()` also scales an element's children. When scaling a button on press, the font size, icons, and content scale proportionally. This is a feature, not a bug.
-
-### 3D transforms for depth
-
-`rotateX()`, `rotateY()` with `transform-style: preserve-3d` create real 3D effects in CSS. Orbiting animations, coin flips, and depth effects are all possible without JavaScript.
-
-```css
-.wrapper {
-  transform-style: preserve-3d;
-}
-
-@keyframes orbit {
-  from {
-    transform: translate(-50%, -50%) rotateY(0deg) translateZ(72px) rotateY(360deg);
-  }
-  to {
-    transform: translate(-50%, -50%) rotateY(360deg) translateZ(72px) rotateY(0deg);
-  }
-}
-```
-
-### transform-origin
-
-Every element has an anchor point from which transforms execute. The default is center. Set it to match where the trigger lives for origin-aware interactions.
-
-## clip-path for Animation
-
-`clip-path` is not just for shapes. It is one of the most powerful animation tools in CSS.
-
-### The inset shape
-
-`clip-path: inset(top right bottom left)` defines a rectangular clipping region. Each value "eats" into the element from that side.
-
-```css
-/* Fully hidden from right */
-.hidden {
-  clip-path: inset(0 100% 0 0);
-}
-
-/* Fully visible */
-.visible {
-  clip-path: inset(0 0 0 0);
-}
-
-/* Reveal from left to right */
-.overlay {
-  clip-path: inset(0 100% 0 0);
-  transition: clip-path 200ms ease-out;
-}
-.button:active .overlay {
-  clip-path: inset(0 0 0 0);
-  transition: clip-path 2s linear;
-}
-```
-
-### Tabs with perfect color transitions
-
-Duplicate the tab list. Style the copy as "active" (different background, different text color). Clip the copy so only the active tab is visible. Animate the clip on tab change. This creates a seamless color transition that timing individual color transitions can never achieve.
-
-### Hold-to-delete pattern
-
-Use `clip-path: inset(0 100% 0 0)` on a colored overlay. On `:active`, transition to `inset(0 0 0 0)` over 2s with linear timing. On release, snap back with 200ms ease-out. Add `scale(0.97)` on the button for press feedback.
-
-### Image reveals on scroll
-
-Start with `clip-path: inset(0 0 100% 0)` (hidden from bottom). Animate to `inset(0 0 0 0)` when the element enters the viewport. Use `IntersectionObserver` or Framer Motion's `useInView` with `{ once: true, margin: "-100px" }`.
-
-### Comparison sliders
-
-Overlay two images. Clip the top one with `clip-path: inset(0 50% 0 0)`. Adjust the right inset value based on drag position. No extra DOM elements needed, fully hardware-accelerated.
-
-## Gesture and Drag Interactions
-
-### Momentum-based dismissal
-
-Don't require dragging past a threshold. Calculate velocity: `Math.abs(dragDistance) / elapsedTime`. If velocity exceeds ~0.11, dismiss regardless of distance. A quick flick should be enough.
-
-```js
-const timeTaken = new Date().getTime() - dragStartTime.current.getTime();
-const velocity = Math.abs(swipeAmount) / timeTaken;
-
-if (Math.abs(swipeAmount) >= SWIPE_THRESHOLD || velocity > 0.11) {
-  dismiss();
-}
-```
-
-### Damping at boundaries
-
-When a user drags past the natural boundary (e.g., dragging a drawer up when already at top), apply damping. The more they drag, the less the element moves. Things in real life don't suddenly stop; they slow down first.
-
-### Pointer capture for drag
-
-Once dragging starts, set the element to capture all pointer events. This ensures dragging continues even if the pointer leaves the element bounds.
-
-### Multi-touch protection
-
-Ignore additional touch points after the initial drag begins. Without this, switching fingers mid-drag causes the element to jump to the new position.
-
-```js
-function onPress() {
-  if (isDragging) return;
-  // Start drag...
-}
-```
-
-### Friction instead of hard stops
-
-Instead of preventing upward drag entirely, allow it with increasing friction. It feels more natural than hitting an invisible wall.
+For CSS transform tricks, clip-path morphing, and gesture/drag interactions, see `references/css-techniques.md`.
 
 ## Performance Rules
 
@@ -558,86 +384,9 @@ const closedX = shouldReduceMotion ? 0 : '-100%';
 ```
 
 Touch devices trigger hover on tap, causing false positives. Gate hover animations behind this media query.
+## Component Craft & Stagger Effects
 
-## The Sonner Principles (Building Loved Components)
-
-These principles come from building Sonner (13M+ weekly npm downloads) and apply to any component:
-
-1. **Developer experience is key.** No hooks, no context, no complex setup. Insert `<Toaster />` once, call `toast()` from anywhere. The less friction to adopt, the more people will use it.
-
-2. **Good defaults matter more than options.** Ship beautiful out of the box. Most users never customize. The default easing, timing, and visual design should be excellent.
-
-3. **Naming creates identity.** "Sonner" (French for "to ring") feels more elegant than "react-toast". Sacrifice discoverability for memorability when appropriate.
-
-4. **Handle edge cases invisibly.** Pause toast timers when the tab is hidden. Fill gaps between stacked toasts with pseudo-elements to maintain hover state. Capture pointer events during drag. Users never notice these, and that is exactly right.
-
-5. **Use transitions, not keyframes, for dynamic UI.** Toasts are added rapidly. Keyframes restart from zero on interruption. Transitions retarget smoothly.
-
-6. **Build a great documentation site.** Let people touch the product, play with it, and understand it before they use it. Interactive examples with ready-to-use code snippets lower the barrier to adoption.
-
-### Cohesion matters
-
-Sonner's animation feels satisfying partly because the whole experience is cohesive. The easing and duration fit the vibe of the library. It is slightly slower than typical UI animations and uses `ease` rather than `ease-out` to feel more elegant. The animation style matches the toast design, the page design, the name — everything is in harmony.
-
-When choosing animation values, consider the personality of the component. A playful component can be bouncier. A professional dashboard should be crisp and fast. Match the motion to the mood.
-
-### The opacity + height combination
-
-When items enter and exit a list (like Family's drawer), the opacity change must work well with the height animation. This is often trial and error. There is no formula — you adjust until it feels right.
-
-### Review your work the next day
-
-Review animations with fresh eyes. You notice imperfections the next day that you missed during development. Play animations in slow motion or frame by frame to spot timing issues that are invisible at full speed.
-
-### Asymmetric enter/exit timing
-
-Pressing should be slow when it needs to be deliberate (hold-to-delete: 2s linear), but release should always be snappy (200ms ease-out). This pattern applies broadly: slow where the user is deciding, fast where the system is responding.
-
-```css
-/* Release: fast */
-.overlay {
-  transition: clip-path 200ms ease-out;
-}
-
-/* Press: slow and deliberate */
-.button:active .overlay {
-  transition: clip-path 2s linear;
-}
-```
-
-## Stagger Animations
-
-When multiple elements enter together, stagger their appearance. Each element animates in with a small delay after the previous one. This creates a cascading effect that feels more natural than everything appearing at once.
-
-```css
-.item {
-  opacity: 0;
-  transform: translateY(8px);
-  animation: fadeIn 300ms ease-out forwards;
-}
-
-.item:nth-child(1) {
-  animation-delay: 0ms;
-}
-.item:nth-child(2) {
-  animation-delay: 50ms;
-}
-.item:nth-child(3) {
-  animation-delay: 100ms;
-}
-.item:nth-child(4) {
-  animation-delay: 150ms;
-}
-
-@keyframes fadeIn {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-```
-
-Keep stagger delays short (30-80ms between items). Long delays make the interface feel slow. Stagger is decorative — never block interaction while stagger animations are playing.
+For component architecture principles (Sonner) and stagger animation patterns, see `references/component-principles.md` and `references/css-techniques.md`.
 
 ## Debugging Animations
 
@@ -660,6 +409,14 @@ Step through animations frame by frame in Chrome DevTools (Animations panel). Th
 
 For touch interactions (drawers, swipe gestures), test on physical devices. Connect your phone via USB, visit your local dev server by IP address, and use Safari's remote devtools. The Xcode Simulator is an alternative but real hardware is better for gesture testing.
 
+## References
+
+- [references/spring-physics.md](references/spring-physics.md) — When tuning spring physics, bounce parameters, and mass/stiffness simulation.
+- [references/css-techniques.md](references/css-techniques.md) — When implementing CSS transforms, clip-path animations, gesture dismissals, and stagger delays.
+- [references/component-principles.md](references/component-principles.md) — When building loved components using toast, positioning, and micro-interaction principles.
+
+---
+
 ## Review Checklist
 
 When reviewing UI code, check for:
@@ -677,3 +434,4 @@ When reviewing UI code, check for:
 | Framer Motion `x`/`y` props under load     | Use `transform: "translateX()"` for hardware acceleration        |
 | Same enter/exit transition speed           | Make exit faster than enter (e.g., enter 2s, exit 200ms)         |
 | Elements all appear at once                | Add stagger delay (30-80ms between items)                        |
+

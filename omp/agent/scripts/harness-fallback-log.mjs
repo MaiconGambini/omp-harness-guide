@@ -2,12 +2,11 @@
 //
 // Appends, reads, and prunes provider-fallback events in
 // `docs/harness/quality/fallback-events.json` ({schemaVersion:1, events: [...]}).
-// Events are DATA, not policy: this script contains no retry logic. The scheduler-level
-// re-dispatch policy lives in agent/scheduler.md + agent/spec-lead.md (OpenCode) and
-// the harness-omp skills + prevc.md (OMP) — exactly one bounded retry on the alternate
-// allowed model (deepseek-v4-flash <-> glm-5.3-flash), never for the spec-lead/scheduler
-// (alert only), chain exhaustion -> `blocked: provider-fallback-exhausted` with
-// operator escalation.
+// Events are DATA, not policy: this script contains no retry logic. Phase 1 records
+// provider/auth/quota/rate/timeout/incapacity failures and escalates them without
+// selecting an automatic fallback target. Provider roster, retry, quorum, and
+// degradation policy are deferred to the Phase 2 panel backlog. A future bounded
+// policy may record eventual chain exhaustion as `provider-fallback-exhausted`.
 //
 // Event shape (validated on --record): {ts?, lane, from_model, to_model, reason,
 // task_id, alert?}. Malformed JSON or a missing required field refuses with a non-zero

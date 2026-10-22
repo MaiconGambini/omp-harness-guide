@@ -1,6 +1,6 @@
 ---
 name: ui-ux-designer
-description: Create interface designs, wireframes, and design systems. Masters user research, accessibility standards, and modern design tools.
+description: "Design user interfaces, wireframes, and design systems. Use when planning UI layouts and user flows. Do NOT use for writing frontend code (use frontend-developer)."
 risk: unknown
 source: community
 date_added: '2026-02-27'

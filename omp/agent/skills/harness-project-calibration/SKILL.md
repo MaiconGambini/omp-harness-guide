@@ -1,19 +1,23 @@
 ---
 name: harness-project-calibration
-description: Derive this project's quality thresholds, high-risk paths, tool-availability gaps, and review blind spots from its own measurements and history. Use after harness-bootstrap, at milestones, or when a global default clearly does not fit this repo.
+description: "Derives repo-specific quality thresholds from local metrics. Use when calibrating gate thresholds after bootstrap. Do NOT use for initial harness installation (use harness-bootstrap)."
 ---
 
 # Harness Project Calibration
 
-The global harness ships a schema, defaults, and this procedure — **never one project's numbers**.
-This skill is what makes `AGENTS.md` and `agent-os/quality-thresholds.json` specific to the repo they
-live in instead of identical boilerplate.
+The global harness ships a schema, defaults, and this procedure. It never ships one project's numbers.
+It is a reusable source only and owns no project tree. Bootstrap installs empty project ledgers in the
+target repository. Calibration is the project rollout boundary: it derives that repository's own
+thresholds, high-risk paths, and tool-availability list from its layout and history.
 
-Output is always a **proposal**, approval-gated. Nothing is written before the operator agrees.
+This skill makes `AGENTS.md` and `agent-os/quality-thresholds.json` specific to the repository they
+live in instead of identical boilerplate.
 
 ## What to derive, and from where
 
 ### 1. Thresholds — from this project's own baselines
+The template's `redteam_findings` and `dependency_cooldown` rows are included here. Derive their
+thresholds and baselines from this repository rather than copying defaults.
 
 Sources, in order: the `baseline` fields in `agent-os/quality-thresholds.json`, then the `Metrics:`
 trailers in `git log --grep=Quality-Gate`, then any Phase-A reports under `docs/harness/quality/`.
@@ -24,6 +28,12 @@ the ritual the whole design exists to avoid. Propose the threshold near the **me
 passing runs**, and say how many runs it rests on. Fewer than three is not a baseline; say so and
 stay in Phase A.
 
+**Promotion Discipline**:
+- Calibration promotes metrics from `observe` to `blocking` **only when genuine empirical evidence exists** (passing historical runs and verified local tools).
+- **Red-team enforcement**: The PREVC transition from `judge` to `refine` under `receipt.tier: "full"` OR `state.risk: "high"` strictly requires an approved red-team review record, a matching `sourceHash`, and ≥3 attempts in PREVC, while the deterministic `redteam_quickcheck` scan runs over the diff prior to Judge.
+- **Learned rules governance**: Refinement (`harness-refine`) only proposes candidate rules from trajectory windows; it **never approves rules autonomously**. All rule activations into `agent-os/learned-rules.json` or `agent-os/standards/` require explicit operator approval.
+- **No fake green suites**: If a tool or test suite is absent, declare an honest `unavailable` or `not_applicable` gap with its installation cost; never generate placeholder tests or mock configurations to simulate passing metrics.
+- **Meaning of 'blocking' (GS-02, GS-07)**: Setting a metric to `blocking` means a failure blocks the delivery claim (`confirm` / `complete`) and feeds the autofix repair loop (`validate -> execute`). It NEVER prevents agents from reading, exploring, running the system locally, or writing code.
 ### 2. `high_risk_paths` — from this repo's actual layout
 
 Match the always-review categories against the directories that actually exist here: auth,
@@ -79,9 +89,10 @@ Stay at A | move to B | move to C — and the evidence for it.
 Approval needed before writing: yes
 ```
 
-On approval, write to `agent-os/quality-thresholds.json`, append the reason to
-`agent-os/quality-decisions.md`, and append this project's specifics beneath the **Quality**
-section of its `AGENTS.md`.
+On approval, calibration writes only to the target project's `agent-os/quality-thresholds.json`,
+appends the reason to `agent-os/quality-decisions.md`, and appends this project's specifics beneath
+the **Quality** section of its `AGENTS.md`. It never writes the global template or any other project
+tree.
 
 ## The ownership seam — one writer per artifact
 
@@ -105,6 +116,8 @@ entry. The rulebook and `docs/review.md` have different owners and are not calib
 - A phase advance is the operator's decision; propose it with evidence, never perform it.
 - Numbers go in the JSON. `AGENTS.md` gets pointers and this project's real path list — not a
   restated threshold.
+- All configured commands in `agent-os/quality-thresholds.json` must be absolute and quoted (`"<harnessHome>/scripts/..."`), dynamically resolving the harness installation without machine-specific usernames.
 - **Running twice with no new measurements proposes nothing.** Say "no new evidence since <date>"
   and stop. A calibration that always has an opinion is noise.
+- Refine proposes, never approves rules alone: rule adoption is an operator gate.
 - Keep the `AGENTS.md` addition short. An entry point that grows every session stops being read.

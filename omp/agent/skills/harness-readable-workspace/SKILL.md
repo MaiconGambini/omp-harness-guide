@@ -1,6 +1,6 @@
 ---
 name: harness-readable-workspace
-description: Audit fresh-session readability. Verify a new agent can orient from repo files alone. Use when harness is modified or a new session fails to orient.
+description: "Audit fresh-session repository readability. Use when modifying the harness or when an agent cannot orient. Do NOT use for runtime health checks (use harness-status)."
 ---
 
 # Harness Readable Workspace

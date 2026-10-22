@@ -1,6 +1,6 @@
 ---
 name: harness-worktree-lifecycle
-description: Use when parallel agents or multiple worktrees may be involved; reports clean, dirty, stale, and safe cleanup recommendations without deleting files.
+description: "Inspect git worktrees for dirty, stale, or safe states. Use when coordinating multiple parallel worktrees. Do NOT use for creating worktree branches (use using-git-worktrees)."
 ---
 
 # Harness Worktree Lifecycle

@@ -1,6 +1,6 @@
 ---
 name: verification-before-completion
-description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+description: "Enforce fresh command verification before claiming success. Use when completing tasks before commits or PRs. Do NOT use for bug diagnosis (use systematic-debugging)."
 ---
 
 # Verification Before Completion
@@ -105,6 +105,10 @@ Skip any step = lying, not verifying
 ❌ Trust agent report
 ```
 
+
+## Bugfix
+
+Bugfix só é considerado pronto com teste de regressão que falha antes e passa depois da correção (reproduzir antes, confirmar depois). Se a automação for comprovadamente impraticável, declare formalmente a justificativa por escrito e registre o roteiro de verificação manual executado com o resultado real observado.
 ## Why This Matters
 
 From 24 failure memories:

@@ -1,6 +1,6 @@
 ---
 name: nextjs-app-router-patterns
-description: "Master Next.js 14+ App Router with Server Components, streaming, parallel routes, and advanced data fetching. Use when building Next.js applications, implementing SSR/SSG, or optimizing React Serve..."
+description: "Implement Next.js App Router patterns, Server Components, and streaming. Use when building Next.js apps or migrating routers. Do NOT use for Supabase auth setup (use nextjs-supabase-auth)."
 risk: unknown
 source: community
 date_added: "2026-02-27"

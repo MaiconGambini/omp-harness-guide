@@ -1,6 +1,6 @@
 ---
 name: harness-cleanup-scanner
-description: Report cleanup candidates without deleting. Use to find debug files, temp reports, stale TODOs, orphan artifacts, large untracked files, and old handoffs.
+description: "Scans repo for temporary files, debug scripts, and stale TODOs. Use when finding cleanup candidates without deleting files. Do NOT use for worktree cleanup (use harness-worktree-lifecycle)."
 ---
 
 # Harness Cleanup Scanner

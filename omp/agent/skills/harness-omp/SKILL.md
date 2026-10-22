@@ -1,6 +1,6 @@
 ---
 name: harness-omp
-description: 'Index and bridge for the Oh My Pi harness — how the OpenCode harness (PREVC, quality gates, judges, refine loop, WIP=1) maps onto omp native primitives. Read this first when using the harness in omp.'
+description: "Bridges OpenCode harness conventions to Oh My Pi primitives. Use when running harness workflows or agents inside Oh My Pi. Do NOT use for Cursor configuration (use harness-cursor-parity)."
 ---
 
 # harness-omp — the harness on Oh My Pi
@@ -43,11 +43,13 @@ Harness agents:
 - `test-runner` — one per test shard for parallel suites.
 - `implementer` — the write-capable lane worker.
 
-Dispatch policy: every dispatched subagent MUST be one of the 23 versioned
+Dispatch policy: every dispatched subagent MUST be one of the 24 versioned
 source profiles installed under `~/.omp/agent/agents/` (rendered from the repo
-`agent/` tree); `task` is only the dispatch tool — every `tasks[]` item names a
-`test-runner` for shards, `code-reviewer`/`architecture-reviewer` for reviews,
-and `judge` for verdicts). Never select bundled/built-in runtime profiles.
+`agent/` tree); `task` is only the dispatch tool — every `tasks[]` item names an
+explicit source agent (`explorer` for recon, `implementer`/`fixer` for edits,
+`test-runner` for shards, `code-reviewer`/`architecture-reviewer`/
+`security-analyst` for reviews, `judge` for verdicts). Never select
+bundled/built-in runtime profiles.
 
 ## OpenCode → omp mapping
 
@@ -79,31 +81,50 @@ Project `docs/ARCHITECTURE.md`, `docs/PRODUCT.md`, and `docs/RELIABILITY.md` rem
 - **Evaluation** — the reviewers, judge/evaluator, and `refiner`/`rule-verifier`
   refine loop.
 
+## Project profile and tools
+
+On session start, if `agent-os/project-profile.json` is missing OR `--detect --json` differs from it, run `node scripts/harness-project-profile.mjs --root . --write --publish-cerebro` without asking the operator. Handle status: `published` = done; `not_registered` = done (no cérebro; mention `novo-projeto` skill if user wants one); `needs_agent_fix` = fix listed notes in `~/.task-pipeline/staging/<name>/` (never in vault, never inside `<!-- gerado -->` or `<!-- harness-profile -->` blocks), rerun up to 3 attempts, then escalate with findings; `blocked_secret` = escalate as `secret_or_credential`, do not publish.
+
+Wrong profile command (exit 127, command not found, missing script): correct `agent-os/project-profile.json` marking the section with `"detected": false`, keep `evals.runnerAllowlist` aligned with the same runner, and re-run `node scripts/harness-project-profile.mjs --root . --write --publish-cerebro` in the same session so the cérebro hub does not stay stale. If the status reports the command was rejected in the hub, the runner is not in the trusted catalog: escalate as `scope_change`, do not edit the catalog. Any edit to `agent-os/project-profile.json`, manual or self-correction, is followed by `--write --publish-cerebro`.
+
+| tool | when | command | never-blocks behavior |
+|---|---|---|---|
+| `harness-project-profile.mjs` | Setup, detection & cérebro publication | `node scripts/harness-project-profile.mjs --root . --detect [--write [--publish-cerebro]]` | Emits detected capabilities; automatic cérebro sync never blocks session initialization |
+| `harness-eval-runner.mjs` | Eval validation & preflight | `node scripts/harness-eval-runner.mjs --preflight-smoke` / `--verify-fail-before [--write]` | No docker and profile not requiring it -> status `skipped` exit 0; isolation `process` or `none` from profile |
+| `harness-model-broker.mjs` | Model evaluation & proxying | `node scripts/harness-model-broker.mjs --self-test` | 503 without provider key |
+| `harness-failure-digest.mjs` | Failure diagnosis & autofix loop | `node scripts/harness-failure-digest.mjs --gate <file>` / `--eval <file>` / `--ci latest` | `gh` missing -> `unavailable` exit 0 |
+| `harness-risk-router.mjs` | Reconciled diff risk scoring | `node scripts/harness-risk-router.mjs --json --since <ref>` | Missing or unparseable refs fall back safely to full tier |
+| `harness-ship-evidence.mjs` | Commit trailer & PR packaging | `node scripts/harness-ship-evidence.mjs --commit-trailer` / `--pr-body` | Refuses on red/stale gate without corrupting repository state |
+| `harness-delivery-preflight.mjs` | Deployment preflight checking | `node scripts/harness-delivery-preflight.mjs --discover --json` / `--check-deploy --env <e> --root .` | `delivery.mode: none` or `manual` -> `not_applicable` exit 0 |
+| `harness-learned-rules.mjs` | Scoped prompt rule injection | `node scripts/harness-learned-rules.mjs --render --fenced --scope <path>` | Caps at `max_active_rules_per_target`; sanitizes fence delimiters |
+| `~/.task-pipeline/intake-cerebro.mjs` | Knowledge base ingestion | `node ~/.task-pipeline/intake-cerebro.mjs --dry` | Staging quarantine before the Obsidian vault |
+| `harness-eval-runner.mjs` | Eval mining & regression gate | `node scripts/harness-eval-runner.mjs --mine --write` / `--regression --metric` | Gate metric `eval_regressions`, blocking; `not_applicable` exit 0 without a dataset |
+| `harness-security-contract.mjs` | Authz & IDOR verification gate | `node scripts/harness-security-contract.mjs --run --metric` | Gate metric `authz_controls`, blocking; status `unavailable` exit 2 when a required service is down |
+| `harness-delivery-preflight.mjs` | Delivery config validation | `node scripts/harness-delivery-preflight.mjs --config-check --metric` | Gate metric `delivery_config`, observe; never deploys |
+
+The Maestro dispatches lanes with `maestri ask --batch` and verifies each lane itself before trusting its report.
+
 ## Guardrails v2 — mandatory bounded controls (spec 2026-08-31-1317-harness-guardrails-v2)
 
 - **Per-lane red-team quickcheck (R1).** After reconciling each lane's diff, run
   `node ~/.omp/agent/scripts/harness-redteam-scan.mjs --metric` (≤ 2 min; explicit
   `--target` outside git). FAIL count 0 → done. Findings → fix and re-scan, or escalate
-  to an operator-approved security review — and escalate on any tier ≥ `sampling` even with
-  a clean scan. Simple/medium task ceremony ≤ 10 min wall-clock; deep active exploitation never enters
+  to `security-analyst` — and escalate on any tier ≥ `sampling` even with a clean scan.
+  Simple/medium task ceremony ≤ 10 min wall-clock; deep active exploitation never enters
   this loop (authorized-only).
 - **Dependency cooldown (R3).** Never add a dependency under the fixed 7-day cooldown;
   the full gate enforces `harness-dependency-cooldown.mjs` via `dependency_cooldown`
   (`--approve <name>@<version> --yes` is the only operator escape).
-- **Provider fallback (R7).** On a provider/auth/quota/rate error, `task` re-dispatches
-  the lane ONCE on the alternate allowed model (`opencode-go/deepseek-v4-flash` ⇄
-  `opencode-go/glm-5.3-flash`). Chain exhaustion → `blocked: provider-fallback-exhausted`
-  + operator escalation. The scheduler role is NEVER auto-downgraded (alert record only).
-  Every event lands in `docs/harness/quality/fallback-events.json`.
-- **Multimodal (R6).** Image-bearing work stays in the main session by default. A
-  `glm-5.3-flash` lane receives an image only when its role explicitly permits it and
-  `harness-capability-check.mjs` passes. A text-only `deepseek-v4-flash` subagent returns
-  `blocked: multimodal-unsupported` — never strip/convert/send images through a text-only
-  fallback; handle the slice in the main thread.
-- **Model matrix (R8).** `openai-codex/gpt-5.6-luna:xhigh` is reserved for the OMP
-  `scheduler` (the orchestrator exception) ONLY. Every other subagent resolves to
-  `opencode-go/deepseek-v4-flash:max` or `opencode-go/glm-5.3-flash:max` (config.yml
-  `modelRoles`); normal `glm-5.3` and DeepSeek Pro are never assigned.
+ - **Provider fallback (R7).** Common subagents get exactly ONE retry, only for
+   provider/auth/quota/rate/timeout/incapacity errors, on `openai-codex/gpt-5.6-luna:high`.
+   Test failures and findings never trigger fallback; exhaustion is `blocked` and logged.
+   The OMP scheduler uses Luna `xhigh` with no fallback/downgrade: alert and block.
+ - **Model matrix (R8).** `modelRoles.scheduler` is Luna `xhigh`; default, implement,
+   recon and review are Luna `medium`; research, test and refine are GLM Flash `high`.
+   Explorer/research/test-runner/refiner/rule-verifier use GLM Flash `high`; all other
+   implementer/advisor/reviewer/Judge roles use Luna `medium`.
+ - **Multimodal (R6).** Images stay in the main session; capability failures block and
+   never silently convert, downgrade, or route through a text-only fallback.
 
 ## Observability: native event trace (T04)
 

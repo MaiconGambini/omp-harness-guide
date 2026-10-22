@@ -1,6 +1,6 @@
 ---
 name: using-git-worktrees
-description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification
+description: "Manage isolated Git worktrees for concurrent work. Use when creating isolated workspaces for tasks. Do NOT use for resolving merge conflicts (use resolving-merge-conflicts)."
 ---
 
 # Using Git Worktrees
@@ -186,7 +186,7 @@ You: I'm using the using-git-worktrees skill to set up an isolated workspace.
 [Run npm install]
 [Run npm test - 47 passing]
 
-Worktree ready at `<project-root>/.worktrees/auth`
+Worktree ready at <project-root>/.worktrees/auth
 Tests passing (47 tests, 0 failures)
 Ready to implement auth feature
 ```

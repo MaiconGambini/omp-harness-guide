@@ -1,6 +1,6 @@
 ---
 name: software-engineering
-description: Core engineering principles for quality, maintainable code.
+description: "Apply core engineering standards for clean, simple code. Use when setting codebase quality rules. Do NOT use for system architecture design (use software-architecture)."
 ---
 
 # Software Engineering Standards

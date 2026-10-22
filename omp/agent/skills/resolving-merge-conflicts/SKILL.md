@@ -1,6 +1,6 @@
 ---
 name: resolving-merge-conflicts
-description: Resolve an in-progress Git merge or rebase conflict by tracing each side's intent and verifying the resulting integration.
+description: "Resolve Git merge and rebase conflicts cleanly. Use when conflicting changes halt Git operations. Do NOT use for isolating feature work (use using-git-worktrees)."
 ---
 
 # Resolving Merge Conflicts

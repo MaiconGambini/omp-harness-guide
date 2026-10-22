@@ -1,6 +1,6 @@
 ---
 name: frontend-security-coder
-description: Expert in secure frontend coding practices specializing in XSS prevention, output sanitization, and client-side security patterns.
+description: "Implements client-side security defenses and sanitization. Use when hardening web UI code against browser exploits. Do NOT use for passive XSS scanning (use frontend-mobile-security-xss-scan)."
 risk: unknown
 source: community
 date_added: '2026-02-27'

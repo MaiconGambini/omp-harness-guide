@@ -9,6 +9,7 @@
 // remote operation. Those stay operator actions (v1.1 invariant 5). "Merge automatico" from the
 // whiteboard means nobody reads the diff — never that nobody presses the button.
 
+import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -21,11 +22,13 @@ import {
   REPORT_DIR,
   REVIEW_DIR,
   sourceHash,
+  stableStringify,
   THRESHOLDS_PATH,
 } from "./harness-quality-core.mjs"
 import { assessReport, route, TIER } from "./harness-risk-router.mjs"
 import { pathExists } from "./harness-common.mjs"
 import { appendEvent, newId, readTrace, validateId, verifyTrace } from "./harness-trace.mjs"
+import { computeCoverageLabel } from "./harness-coverage-label.mjs"
 
 const REVIEW_MD = path.join("docs", "review.md")
 
@@ -563,8 +566,10 @@ function blindSpotChecklist(root) {
 
 export function renderPrBody(root, { report, reportFile, routing }) {
   const template = readTextIfExists(path.join(root, "docs", "pull-request.md"))
-  const rows = report.rows ?? []
+  const rows = report?.rows ?? []
   const unavailable = rows.filter((row) => row.status === "unavailable")
+  const cov = computeCoverageLabel(report)
+  const repFile = reportFile ? reportFile.replace(/\\/g, "/") : "unknown"
 
   const sections = [
     "## What changed and why",
@@ -575,7 +580,15 @@ export function renderPrBody(root, { report, reportFile, routing }) {
     "",
     renderMetricTable(report),
     "",
-    `Report: \`${reportFile.replace(/\\/g, "/")}\` · phase \`${report.phase}\` · verdict **${report.verdict}** · source hash \`${report.sourceHash}\``,
+    `Report: \`${repFile}\` · phase \`${report?.phase}\` · verdict **${report?.verdict}** · source hash \`${report?.sourceHash}\``,
+    ...(cov
+      ? [
+          `Measured: ${cov.measured}/${cov.total}`,
+          ...(cov.unmeasuredMajority
+            ? [`WARNING: most metrics unmeasured (${cov.measured}/${cov.total}); pass is not evidence of quality`]
+            : []),
+        ]
+      : []),
     "",
     ...(unavailable.length
       ? [
@@ -615,6 +628,211 @@ export function renderPrBody(root, { report, reportFile, routing }) {
   const composed = template.trim() ? `${body}\n---\n\n<!-- project template: docs/pull-request.md -->\n${template}` : body
   // The body is published; a command line or env value that leaked into a detail must not travel.
   return redact(composed)
+}
+
+// ---------------------------------------------------------------------------
+// PR Evidence Envelope & CI Boundary (AC-PRCI-02, AC-PRCI-03, AC-PRCI-06)
+
+const PROTECTED_GRADER_SCRIPTS = new Set([
+  "harness-eval-runner.mjs",
+  "harness-quality-gate.mjs",
+  "harness-quality-adapters.mjs",
+])
+
+export function composePrEvidenceEnvelope({
+  root = null,
+  report = null,
+  review = null,
+  reviewersManifest = [],
+  targetCommitSha = null,
+  workingTreeClean = null,
+} = {}) {
+  if (!report || typeof report !== "object") {
+    return {
+      ok: false,
+      pass: false,
+      status: "unavailable",
+      reason: "missing or invalid gate report",
+      target_commit_sha: targetCommitSha,
+      source_hash: null,
+      report_digest: null,
+      reviewers_manifest: reviewersManifest,
+      working_tree_clean: workingTreeClean,
+    }
+  }
+
+  let effectiveSha = targetCommitSha ?? report.evidenceEnvelope?.target_commit_sha ?? null
+  if (!effectiveSha && root) {
+    try {
+      const git = makeGit(root)
+      if (git.isRepo()) effectiveSha = git.head() || null
+    } catch {}
+  }
+
+  const effectiveSourceHash = report.sourceHash ?? report.evidenceEnvelope?.source_hash ?? null
+
+  const effectiveWorkingTreeClean =
+    workingTreeClean !== null
+      ? Boolean(workingTreeClean)
+      : report.evidenceEnvelope?.working_tree_clean !== undefined
+        ? Boolean(report.evidenceEnvelope.working_tree_clean)
+        : null
+
+  if (effectiveWorkingTreeClean === false) {
+    return {
+      ok: false,
+      pass: false,
+      status: "unavailable",
+      reason: "working tree is dirty — PR evidence envelope requires clean working tree at target commit",
+      target_commit_sha: effectiveSha,
+      source_hash: effectiveSourceHash,
+      report_digest: null,
+      reviewers_manifest: Array.isArray(reviewersManifest) ? reviewersManifest : [],
+      working_tree_clean: false,
+    }
+  }
+
+  if (
+    targetCommitSha !== null &&
+    report.evidenceEnvelope?.target_commit_sha &&
+    targetCommitSha !== report.evidenceEnvelope.target_commit_sha
+  ) {
+    return {
+      ok: false,
+      pass: false,
+      status: "unavailable",
+      reason: `target commit SHA diverged: requested ${targetCommitSha} but report anchored ${report.evidenceEnvelope.target_commit_sha}`,
+      target_commit_sha: targetCommitSha,
+      source_hash: effectiveSourceHash,
+      report_digest: null,
+      reviewers_manifest: Array.isArray(reviewersManifest) ? reviewersManifest : [],
+      working_tree_clean: effectiveWorkingTreeClean,
+    }
+  }
+
+  if (root && effectiveSourceHash) {
+    try {
+      const git = makeGit(root)
+      if (git.isRepo()) {
+        const currentHash = sourceHash(root, { git, fresh: true })
+        if (currentHash && currentHash !== effectiveSourceHash) {
+          return {
+            ok: false,
+            pass: false,
+            status: "unavailable",
+            reason: `source hash diverged: report carries ${effectiveSourceHash} but current tree has ${currentHash}`,
+            target_commit_sha: effectiveSha,
+            source_hash: effectiveSourceHash,
+            report_digest: null,
+            reviewers_manifest: Array.isArray(reviewersManifest) ? reviewersManifest : [],
+            working_tree_clean: effectiveWorkingTreeClean,
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const { evidenceEnvelope, ...reportRest } = report
+  const reportDigest = crypto
+    .createHash("sha256")
+    .update(stableStringify(reportRest))
+    .digest("hex")
+
+  const timestamp = new Date().toISOString()
+
+  return {
+    ok: true,
+    pass: true,
+    status: "pass",
+    target_commit_sha: effectiveSha,
+    source_hash: effectiveSourceHash,
+    report_digest: reportDigest,
+    reviewers_manifest: Array.isArray(reviewersManifest) ? reviewersManifest : [],
+    working_tree_clean: effectiveWorkingTreeClean ?? true,
+    timestamp,
+  }
+}
+
+export function verifyCiPrevcImmutability({
+  beforeBytes,
+  afterBytes,
+  prevcPath = "docs/harness/state/prevc.json",
+  root = null,
+} = {}) {
+  let bBytes = beforeBytes
+  let aBytes = afterBytes
+
+  if (bBytes === undefined && root) {
+    const fullPath = path.join(root, prevcPath)
+    bBytes = pathExists(fullPath) ? fs.readFileSync(fullPath) : ""
+  }
+  if (aBytes === undefined && root) {
+    const fullPath = path.join(root, prevcPath)
+    aBytes = pathExists(fullPath) ? fs.readFileSync(fullPath) : ""
+  }
+
+  const beforeStr = Buffer.isBuffer(bBytes) ? bBytes.toString("utf8") : String(bBytes ?? "")
+  const afterStr = Buffer.isBuffer(aBytes) ? aBytes.toString("utf8") : String(aBytes ?? "")
+
+  if (beforeStr !== afterStr) {
+    return {
+      ok: false,
+      pass: false,
+      immutable: false,
+      status: "unavailable",
+      reason: `CI execution mutated ${prevcPath.replace(/\\/g, "/")} — PREVC lifecycle state is read-only in CI and owned exclusively by local orchestrator`,
+      path: prevcPath,
+    }
+  }
+
+  return {
+    ok: true,
+    pass: true,
+    immutable: true,
+    status: "pass",
+    path: prevcPath,
+  }
+}
+
+export function detectGraderOrThresholdTampering(changedFiles = [], { operatorAuthorized = false } = {}) {
+  const files = Array.isArray(changedFiles) ? changedFiles : []
+  const tamperedFiles = []
+
+  for (const rawFile of files) {
+    if (typeof rawFile !== "string") continue
+    const file = rawFile.trim().replace(/\\/g, "/")
+    const lower = file.toLowerCase()
+
+    const isEvals = lower === "evals" || lower.startsWith("evals/") || lower.includes("/evals/")
+    const isThresholds = lower === "agent-os/quality-thresholds.json" || lower.endsWith("/agent-os/quality-thresholds.json")
+    const basename = path.basename(lower)
+    const isGraderScript = PROTECTED_GRADER_SCRIPTS.has(basename)
+
+    if (isEvals || isThresholds || isGraderScript) {
+      tamperedFiles.push(file)
+    }
+  }
+
+  if (tamperedFiles.length > 0 && !operatorAuthorized) {
+    return {
+      ok: false,
+      pass: false,
+      tampered: true,
+      status: "unavailable",
+      kind: "tamper_detected",
+      reason: `PR modifies protected grader/evals/threshold files without explicit operator authorization: ${tamperedFiles.join(", ")}`,
+      tamperedFiles,
+    }
+  }
+
+  return {
+    ok: true,
+    pass: true,
+    tampered: false,
+    authorized: Boolean(operatorAuthorized),
+    tamperedFiles: [],
+    protectedFiles: tamperedFiles,
+  }
 }
 
 // ---------------------------------------------------------------------------

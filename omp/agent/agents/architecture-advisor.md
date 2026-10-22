@@ -49,7 +49,7 @@ description: >-
   </commentary>
 
   </example>
-model: "@research"
+model: "@recon"
 tools: read, grep, glob
 spawns: ""
 ---

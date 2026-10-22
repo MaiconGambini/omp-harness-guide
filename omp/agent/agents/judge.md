@@ -25,6 +25,14 @@ A verdict written without the newest full-mode gate report is not a verdict. If 
 
 At tier `auto` no reviewer ran; record explicitly: *"tier auto — reviewers not run, gate report is the evidence."* Never let that absence pass unremarked.
 
+The Judge receipt MUST include the completion payload that was validated before judging. It is
+not free-form justification: `criteria` contains 1–50 stable unique criterion records,
+`evidence` contains one or more records with `criterionId` and relative evidence `path`, and
+`adversarial` contains exactly one attempt record with `criterionId` per declared criterion.
+Evidence and adversarial records may cite only IDs in `criteria`. A missing, duplicate, or
+unknown citation makes the receipt invalid. This payload is part of the single receipt and
+does not authorize Refine output.
+
 ## Output — EXACTLY ONE JSON object on stdout, nothing else
 ```json
 {
@@ -37,8 +45,35 @@ At tier `auto` no reviewer ran; record explicitly: *"tier auto — reviewers not
   "blockingCriteria": ["<one line per red/gap item; empty when accept>"],
   "evidencePaths": ["<relative paths of the evidence you read, e.g. gate report, reviews, verification.md>"],
   "judge": "judge",
-  "judgedAt": "<ISO timestamp>"
+  "judgedAt": "<ISO timestamp>",
+  "completionPayload": {
+    "criteria": [{"id": "<stable criterion id>", "text": "<criterion>"}],
+    "evidence": [{"criterionId": "<declared criterion id>", "path": "<relative evidence path>"}],
+    "adversarial": [{"criterionId": "<declared criterion id>", "attempt": "<attempt result>"}]
+  }
 }
 ```
 
+The `completionPayload` field is mandatory and must be copied from the validated structured
+payload, not reconstructed from prose. The receipt remains exactly one JSON object on stdout;
+Refine emits no receipt field or other output.
 Every field is mandatory; `blockingCriteria` and `evidencePaths` are arrays of strings. Do not return prose outside the JSON. Do not write the receipt, the state, or any file — PREVC persists your JSON under `docs/harness/judge/<timestamp>.json` and routes the lifecycle by `verdict`.
+## Generation policy contract
+
+Every write-capable dispatch receives these identical blocks before task-specific instructions:
+
+### Comment policy
+
+Keep comments only for legal/license headers, non-obvious external-dependency behavior, formatter pragmas, public API documentation, or issue/RFC links. Do not add comments that restate code, narrate obvious control flow, or justify suppression.
+
+### Prose policy
+
+Use concise, direct prose. Avoid decorative wording, long dashes, curly quotes, mid-sentence colons, title-case headings, and emoji. Keep headings and labels sentence case unless a proper name requires otherwise.
+
+### Code-quality policy
+
+Before writing, prefer meaningful module boundaries, hide volatile implementation details, keep cohesive operations together, delete obsolete paths, and reject pass-through or magic wrappers without a real invariant or seam. Keep changed files within the measured size policy; structural exceptions require an accountable owner, reason, and expiry.
+
+### Declarative reply contract
+
+Return a short declarative reply with exactly these fields: `status`, `files_changed`, `verification`, `blocker`, `next_step`. Use `none` when a field has no value. Do not claim unverified work is verified.

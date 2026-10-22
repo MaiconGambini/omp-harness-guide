@@ -3,18 +3,16 @@
 // <agentHome>/extensions/harness-omp-trace.ts through the exporter/install/check
 // tooling. Do not hand-edit the installed copy.
 //
-// Subscribes to the native OMP extension event bus (pi.on) and persists
+// Subscribes to the native OMP lifecycle event bus (pi.on) and persists
 // T01-envelope records through the shared contract module
 // (<agentHome>/scripts/harness-trace.mjs): the runtime spine - session, run (one
-// per agent turn), tool (per execution), and model (usage/cost/context per run) -
-// with stable IDs, redaction, hash chaining, bounds, and explicit unavailable
-// semantics enforced by the contract module at append time.
+// per agent turn), and model (usage/cost/context per run) records.
 //
 // Boundaries (never crossed):
 //  - No session JSONL, history/agent databases, statusline, or manual commands
-//    are read or mislabeled as tracing; only native extension events are consumed.
-//  - No prompt or assistant message bodies are persisted; records carry metadata
-//    only (native event name, tool name, tool call id).
+//    are read or mislabeled as tracing; only native lifecycle events are consumed.
+//  - No prompt, assistant message, or tool bodies are persisted.
+//  - Tool payload capture belongs to ai-memory.
 //  - Missing model usage/cost/context are persisted as explicit unavailable by
 //    the contract module; zeros are only recorded when the runtime explicitly
 //    supplies them.
@@ -27,9 +25,8 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 interface TraceModule {
   newId(prefix: string): string
-  appendEvent(root: string, json: string): { ok: boolean; reason?: string }
+  appendEventAsync(root: string, json: string): Promise<{ ok: boolean; reason?: string }>
 }
-
 interface ExtensionContextLike {
   cwd?: unknown
   model?: { id?: unknown; name?: unknown; provider?: unknown }
@@ -44,8 +41,7 @@ let traceModule: TraceModule | null = null
 let traceId: string | null = null
 let sessionId: string | null = null
 let runId: string | null = null
-const startedTools = new Set<string>()
-const mintedToolIds = new Map<string, string>()
+ 
 
 function agentHome(): string {
   try {
@@ -69,7 +65,7 @@ async function ensureTraceModule(): Promise<TraceModule | null> {
   for (const file of candidates) {
     try {
       const loaded = (await import(pathToFileURL(file).href)) as unknown as TraceModule
-      if (loaded && typeof loaded.appendEvent === "function" && typeof loaded.newId === "function") {
+      if (loaded && typeof loaded.appendEventAsync === "function" && typeof loaded.newId === "function") {
         traceModule = loaded
         return traceModule
       }
@@ -78,15 +74,6 @@ async function ensureTraceModule(): Promise<TraceModule | null> {
     }
   }
   return null
-}
-
-function toolPayload(event: unknown): { toolName: string | null; toolCallId: string | null } {
-  if (event === null || typeof event !== "object") return { toolName: null, toolCallId: null }
-  const record = event as Record<string, unknown>
-  return {
-    toolName: typeof record.toolName === "string" ? record.toolName : null,
-    toolCallId: typeof record.toolCallId === "string" ? record.toolCallId : null,
-  }
 }
 
 function modelFrom(context: ExtensionContextLike): { provider: string | null; name: string | null } | null {
@@ -140,7 +127,60 @@ function countersFrom(context: ExtensionContextLike): { usage?: unknown; cost?: 
   return out
 }
 
-function emitSync(
+export function extractSkillSlugsFromPath(rawPath: unknown): string[] {
+  if (typeof rawPath !== "string") return []
+  const slugs: string[] = []
+  const parts = rawPath.split(";")
+  for (const part of parts) {
+    const trimmed = part.trim()
+    const match = trimmed.match(/^skill:\/\/([a-zA-Z0-9_-]+)/i)
+    if (match) {
+      const slug = match[1].toLowerCase()
+      if (!slugs.includes(slug)) slugs.push(slug)
+    }
+  }
+  return slugs
+}
+
+export function extractSkillSlugsFromToolInput(input: unknown): string[] {
+  if (!input || typeof input !== "object") {
+    return typeof input === "string" ? extractSkillSlugsFromPath(input) : []
+  }
+  const rec = input as Record<string, unknown>
+  const candidates: unknown[] = [
+    rec.path,
+    rec.file_path,
+    rec.filePath,
+    rec.targetPath,
+    rec.paths,
+    rec.url,
+    rec.uri,
+  ]
+  const slugs: string[] = []
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        for (const s of extractSkillSlugsFromPath(item)) {
+          if (!slugs.includes(s)) slugs.push(s)
+        }
+      }
+    } else if (typeof candidate === "string") {
+      for (const s of extractSkillSlugsFromPath(candidate)) {
+        if (!slugs.includes(s)) slugs.push(s)
+      }
+    }
+  }
+  return slugs
+}
+
+export function extractSkillSlugFromCommand(text: unknown): string | null {
+  if (typeof text !== "string") return null
+  const trimmed = text.trim()
+  const match = trimmed.match(/^\/skill:([a-zA-Z0-9_-]+)/i)
+  return match ? match[1].toLowerCase() : null
+}
+
+async function emitAsync(
   context: ExtensionContextLike,
   eventName: string,
   entityType: string,
@@ -148,7 +188,7 @@ function emitSync(
   parent: { type: string; id: string } | null,
   extra: Record<string, unknown>,
   entityId?: string,
-): void {
+): Promise<void> {
   const mod = traceModule
   if (!mod) return
   const cwd = typeof context?.cwd === "string" ? context.cwd : null
@@ -172,27 +212,24 @@ function emitSync(
     context: counters.context,
     data: { native_event: eventName, ...extra },
   }
-  const result = mod.appendEvent(cwd, JSON.stringify(envelope))
+  const result = await mod.appendEventAsync(cwd, JSON.stringify(envelope))
   if (result && result.ok === false) {
     console.error("harness-omp-trace: append refused: " + String(result.reason ?? "unknown"))
   }
 }
-
 export default function registerHarnessOmpTrace(api: {
-  on(event: string, handler: (event: unknown, context: ExtensionContextLike) => void): void
+  on(event: string, handler: (event: unknown, context: ExtensionContextLike) => void | Promise<void>): void
 }): void {
   api.on("session_start", async (event, context) => {
     const mod = await ensureTraceModule()
     if (!mod) return
-    // A real session boundary: rotate to a fresh identity so consecutive
-    // sessions never collapse onto the previous session id or a stale run id.
     sessionId = mod.newId("ses")
     runId = mod.newId("run")
-    emitSync(context, "session_start", "session", "start", null, {})
+    await emitAsync(context, "session_start", "session", "start", null, {})
   })
 
-  api.on("session_switch", (_event, context) => {
-    emitSync(context, "session_switch", "session", "record", null, {})
+  api.on("session_switch", async (_event, context) => {
+    await emitAsync(context, "session_switch", "session", "record", null, {})
   })
 
   api.on("agent_start", async (event, context) => {
@@ -200,48 +237,59 @@ export default function registerHarnessOmpTrace(api: {
     if (!mod) return
     if (!sessionId) sessionId = mod.newId("ses")
     runId = mod.newId("run")
-    emitSync(context, "agent_start", "run", "start", { type: "session", id: sessionId }, {})
+    await emitAsync(context, "agent_start", "run", "start", { type: "session", id: sessionId }, {})
   })
 
-  api.on("tool_execution_start", async (event, context) => {
+  api.on("tool_call", async (event, context) => {
     const mod = await ensureTraceModule()
-    if (!mod || !runId) return
-    const payload = toolPayload(event)
-    let toolId = payload.toolCallId ? mintedToolIds.get(payload.toolCallId) : undefined
-    if (!toolId) {
-      toolId = mod.newId("tool")
-      if (payload.toolCallId) mintedToolIds.set(payload.toolCallId, toolId)
+    if (!mod) return
+    const rec = typeof event === "object" && event !== null ? (event as Record<string, unknown>) : {}
+    const input = rec.input ?? rec.args ?? rec.arguments ?? rec.parameters ?? event
+    const slugs = extractSkillSlugsFromToolInput(input)
+    for (const slug of slugs) {
+      await emitAsync(
+        context,
+        "tool_call",
+        "tool",
+        "skill_loaded",
+        runId ? { type: "run", id: runId } : (sessionId ? { type: "session", id: sessionId } : null),
+        { slug, source: "read" },
+        mod.newId("tool"),
+      )
     }
-    startedTools.add(toolId)
-    emitSync(context, "tool_execution_start", "tool", "start", { type: "run", id: runId }, { name: payload.toolName, call_id: payload.toolCallId }, toolId)
   })
 
-  api.on("tool_execution_end", async (event, context) => {
+  api.on("input", async (event, context) => {
     const mod = await ensureTraceModule()
-    if (!mod || !runId) return
-    const payload = toolPayload(event)
-    const toolId = payload.toolCallId ? (mintedToolIds.get(payload.toolCallId) ?? mod.newId("tool")) : mod.newId("tool")
-    if (!startedTools.has(toolId)) return
-    startedTools.delete(toolId)
-    emitSync(context, "tool_execution_end", "tool", "end", { type: "run", id: runId }, { name: payload.toolName, call_id: payload.toolCallId }, toolId)
+    if (!mod) return
+    const text = typeof event === "string" ? event : (typeof (event as Record<string, unknown>)?.text === "string" ? (event as Record<string, unknown>).text : null)
+    const slug = extractSkillSlugFromCommand(text)
+    if (slug) {
+      await emitAsync(
+        context,
+        "input",
+        "tool",
+        "skill_loaded",
+        runId ? { type: "run", id: runId } : (sessionId ? { type: "session", id: sessionId } : null),
+        { slug, source: "command" },
+        mod.newId("tool"),
+      )
+    }
   })
+
 
   api.on("agent_end", async (event, context) => {
     const mod = await ensureTraceModule()
     if (!mod || !runId) return
-    emitSync(context, "agent_end", "run", "end", { type: "session", id: sessionId ?? mod.newId("ses") }, {})
-    emitSync(context, "model_record", "model", "record", { type: "run", id: runId }, {}, mod.newId("model"))
+    await emitAsync(context, "agent_end", "run", "end", { type: "session", id: sessionId ?? mod.newId("ses") }, {})
+    await emitAsync(context, "model_record", "model", "record", { type: "run", id: runId }, {}, mod.newId("model"))
     runId = null
   })
 
-  api.on("session_shutdown", (_event, context) => {
-    // fully synchronous: the module is already loaded and the process is exiting
+  api.on("session_shutdown", async (_event, context) => {
     if (!traceModule || !sessionId) return
-    emitSync(context, "session_shutdown", "session", "end", null, {})
-    // close the current session: drop run/tool correlation so the next
-    // session_start cannot inherit a stale run id or tool mapping
+    await emitAsync(context, "session_shutdown", "session", "end", null, {})
     runId = null
-    startedTools.clear()
-    mintedToolIds.clear()
   })
 }
+

@@ -1,6 +1,6 @@
 ---
 name: typescript-pro
-description: Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns.
+description: "Architect enterprise TypeScript with strict type safety. Use when structuring production systems. Do NOT use for standalone generic helpers (use typescript-advanced-types)."
 risk: unknown
 source: community
 date_added: '2026-02-27'

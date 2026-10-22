@@ -1,6 +1,6 @@
 ---
 name: harness-architecture-checks
-description: Propose executable architecture boundary checks from actual docs and layout. Use when preventing cross-layer imports, secret leaks, or boundary drift.
+description: "Generates executable architecture boundary checks. Use when creating automated scripts to prevent cross-layer imports. Do NOT use for manual diff review (use improve-codebase-architecture)."
 ---
 
 # Harness Architecture Checks

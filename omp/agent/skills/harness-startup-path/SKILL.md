@@ -1,6 +1,6 @@
 ---
 name: harness-startup-path
-description: Discover startup and verification commands for any project. Use when session start, PREVC, or handoff needs a baseline command without assuming init.ps1.
+description: "Discover baseline verification commands. Use when identifying reproducible test or build commands for a project. Do NOT use for authoring test suites (use harness-verify-bootstrap)."
 ---
 
 # Harness Startup Path

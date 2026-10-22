@@ -1,6 +1,6 @@
 ---
 name: harness-context-budget
-description: Use when auditing OpenCode/Cursor context load from skills, plugins, commands, MCPs, and always-loaded instructions before large PREVC work.
+description: "Audits token load from skills, plugins, and MCP tools. Use when checking context window overhead before major tasks. Do NOT use for system architecture docs auditing (use harness-context-layer)."
 ---
 
 # Harness Context Budget

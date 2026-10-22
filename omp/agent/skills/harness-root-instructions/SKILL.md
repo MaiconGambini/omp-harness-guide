@@ -1,6 +1,6 @@
 ---
 name: harness-root-instructions
-description: Audit or draft concise root agent instructions such as AGENTS.md. Use when bootstrap or cleanup needs a 50-200 line router.
+description: "Audit and draft concise root instructions. Use when bootstrapping or pruning router instructions like AGENTS.md. Do NOT use for language standards (use harness-standards-router)."
 ---
 
 # Harness Root Instructions

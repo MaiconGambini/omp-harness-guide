@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X".
+description: "Reviews pull requests and diffs for standards and merge readiness. Use when evaluating a branch or diff for quality. Do NOT use when processing received feedback (use receiving-code-review)."
 ---
 
 Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
@@ -73,7 +73,7 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 
 | Tier | Scope |
 |---|---|
-| `full` | every changed file. Unchanged behaviour. Also require operator-approved security review. |
+| `full` | every changed file. Unchanged behaviour. Also dispatch `@security-analyst`. |
 | `sampling` | **only** the router's sampled file list — highest complexity delta, lowest mutation kill. Both sub-agents get that list and nothing else. |
 | `auto` | this skill does not run. The gate report is the evidence; record the skip with the report path in the PREVC evidence, never leave it implied. |
 
@@ -140,3 +140,22 @@ Reporting them separately stops one axis from masking the other.
 There is now a third, measured axis that neither sub-agent owns: the gate. A change can be green on
 every metric and fail both of these axes, which is exactly why the gate replaced the *measurable*
 checkboxes and not the review itself.
+
+## Review lens
+
+Before approving, apply the human structural lens in
+[`references/code-quality-review.md`](references/code-quality-review.md). It covers module depth,
+information leakage, temporal decomposition, pass-through wrappers, deletion preference, and the
+file-growth waiver contract. This lens complements (and does not replace) gate metrics, tests, or
+architecture evidence.
+
+## Review request
+
+Request review after each task in subagent-driven development, after a major feature, and before
+merging. Give the reviewer only the implementation summary, requirements, fixed-point SHA, head
+SHA, and concise description. Act on critical and important findings before proceeding; document
+reasoned disagreement.
+
+Use the repository's configured review dispatcher and reviewer template. Do not invoke retired
+skill names or assume a provider-specific reviewer role; the active review skill owns both
+execution and aggregation.

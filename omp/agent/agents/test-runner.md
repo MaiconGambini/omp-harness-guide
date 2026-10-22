@@ -23,11 +23,14 @@ Detect and use the project's runner, scoped to your shard:
 When asked for coverage, emit it in the reconcilable format (e.g. `--coverage json-summary`).
 
 ## Output
-Return:
-- `shard` — the shard id.
-- `command` — the exact command you ran.
-- `pass_fail` — pass/fail counts.
-- `failures` — each failing test with its first error line.
-- `wall_time` — wall clock for the shard.
 
-Do NOT edit source. Do NOT run tests outside your shard.
+- Persist raw stdout/stderr, complete file rewrites, and test failure traces longer than 20 lines to `local://` or `artifact://`.
+- Never print raw logs, full rewrites, or long transcripts into the parent session context.
+- Return one JSON object under 500 tokens with exactly this schema.
+  ```json
+  { "status": "ok" | "error", "summary": string, "artifact"?: string, "failures"?: string[] }
+  ```
+- On error, `failures` contains only short failure identifiers or first-line messages. Put the full trace behind `artifact`.
+- If required verbose evidence cannot be persisted, return `status: "error"` with a short blocked summary; never inline the trace.
+
+Keep every field short. Shard and command details remain dispatch input, not response fields.

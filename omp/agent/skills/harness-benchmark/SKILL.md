@@ -1,6 +1,6 @@
 ---
 name: harness-benchmark
-description: Propose project-specific benchmark scripts and thresholds. Use when performance or critical-path regression checks are needed.
+description: "Creates benchmark scripts and threshold checks. Use when establishing performance baselines or regression gates. Do NOT use for ad-hoc Python profiling (use python-performance-optimization)."
 ---
 
 # Harness Benchmark
@@ -16,8 +16,7 @@ Benchmarks must match the product's critical paths.
 
 ## Possible Outputs
 
-- `scripts/benchmark.ps1`
-- `scripts/benchmark.sh`
+- benchmark runner script (`benchmark.ps1` or `benchmark.sh`)
 - package script proposal
 - docs-only benchmark plan
 

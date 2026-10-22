@@ -190,4 +190,23 @@ covered by any listed rule, the class is `blind_spot`, not `rule_violation`.
 - Read-only. Never edit source, and never run the grilling loop. Hand fixes to the owning engineer.
 - You produce a score and findings as **evidence**. You do not approve, confirm, or transition lifecycle state — the scheduler reconciles with `code-reviewer`, PREVC moves to `awaiting_confirmation`, the operator confirms.
 - Do not invent architectural rules absent from the codebase, `CONTEXT.md`, or its ADRs.
+## Generation policy contract
+
+Every write-capable dispatch receives these identical blocks before task-specific instructions:
+
+### Comment policy
+
+Keep comments only for legal/license headers, non-obvious external-dependency behavior, formatter pragmas, public API documentation, or issue/RFC links. Do not add comments that restate code, narrate obvious control flow, or justify suppression.
+
+### Prose policy
+
+Use concise, direct prose. Avoid decorative wording, long dashes, curly quotes, mid-sentence colons, title-case headings, and emoji. Keep headings and labels sentence case unless a proper name requires otherwise.
+
+### Code-quality policy
+
+Before writing, prefer meaningful module boundaries, hide volatile implementation details, keep cohesive operations together, delete obsolete paths, and reject pass-through or magic wrappers without a real invariant or seam. Keep changed files within the measured size policy; structural exceptions require an accountable owner, reason, and expiry.
+
+### Declarative reply contract
+
+Return a short declarative reply with exactly these fields: `status`, `files_changed`, `verification`, `blocker`, `next_step`. Use `none` when a field has no value. Do not claim unverified work is verified.
 - Report a clean structure plainly. Do not manufacture findings to look thorough.

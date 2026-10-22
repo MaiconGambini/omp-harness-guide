@@ -1,6 +1,6 @@
 ---
 name: harness-continuity
-description: Multi-session state management with WIP=1 across JSON or Markdown task state and clean-state checkpoints before commits or handoffs.
+description: "Manages multi-session task continuity and strict WIP=1 state. Use when resuming suspended work or long-running tasks. Do NOT use for session-closing summaries (use harness-clean-handoff)."
 ---
 
 # Harness Continuity

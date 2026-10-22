@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.
+description: "Build throwaway UI or logic prototypes. Use when testing state models or UI concepts. Do NOT use for production code (use implement)."
 ---
 
 # Prototype

@@ -1,3 +1,7 @@
+---
+name: harness-agent-os-specs
+description: "Creates structured Agent OS specifications with criteria and tasks. Use when scoping medium or complex work needing specs. Do NOT use for tracker ticket conversion (use to-tickets)."
+---
 # Harness Agent OS Specs
 
 Create and maintain Agent OS specs for meaningful work.

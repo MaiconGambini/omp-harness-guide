@@ -1,23 +1,25 @@
 // harness-freshsession — the fresh-session readability test, as an assert.
 //
-// harness-readable-workspace is a *procedure*: it asks four questions and a
+// harness-readable-workspace is a *procedure*: it asks six questions and a
 // human answers them from the conversation. Nothing checked them. This script
 // answers them from files only — no conversation context — and exits non-zero
 // when it cannot, so the ritual becomes a check.
 //
 //   | Question                         | Resolved from                                   |
 //   |----------------------------------|-------------------------------------------------|
-//   | What does this repo do?          | root instructions (AGENTS.md, CLAUDE.md, README) |
-//   | How do I start and verify?       | the discovered startup path                     |
-//   | What is unfinished?              | discovered progress and feature state           |
-//   | What is the single next action?  | the progress file's next-action section         |
+//   | What does this system do?        | root instructions (AGENTS.md, CLAUDE.md, README) |
+//   | How is it organized?             | structure section in root instructions          |
+//   | How do I install and start it?   | installation docs and startup path              |
+//   | How do I verify it works?        | verification docs or discovered check command   |
+//   | What is the current progress?    | discovered progress and feature state           |
+//   | What is the next task?            | the progress file's next-action section         |
 //
 // Discovery order reuses harness-startup-path and harness-session-start, and
 // assumes NO path: no init.ps1, no feature_list.json, no .specs/project/STATE.md
 // — a script that assumed them would fail on the harness itself.
 //
 // Exit codes match the gate's meaning:
-//   0  all four questions resolve from files
+//   0  all six questions resolve from files
 //   1  at least one question is unanswerable — a project gap, named not crashed
 //   2  the script itself could not run — a harness blocker, never a project failure
 
@@ -26,6 +28,7 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { pathExists, readTextIfExists } from "./harness-common.mjs"
 import { readJsonIfExists } from "./harness-quality-core.mjs"
+import { STATE_REL } from "./harness-progress.mjs"
 
 const SCRIPT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -45,8 +48,35 @@ function answerWhatTheRepoDoes(root) {
   return { answerable: false, gap: `no root instructions (${ROOT_INSTRUCTIONS.join(", ")})` }
 }
 
-// ---------------------------------------------------------------------------
-// question 2 — the discovered startup path (harness-startup-path order)
+function documentSection(root, relative, headings) {
+  const text = readTextIfExists(path.join(root, relative))
+  if (!text) return null
+  const escaped = headings.map((heading) => heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+  const match = text.match(new RegExp(`^#{1,3}\\s+(?:${escaped})\\s*$`, "mi"))
+  if (!match) return null
+  const section = text.slice(match.index + match[0].length).split(/\n#{1,3}\s+/)[0]
+  const content = section
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && line !== "_None._")
+  return content.length > 0 ? { source: relative, detail: content.slice(0, 3).join(" ").slice(0, 200) } : null
+}
+
+function firstDocumentSection(root, headings) {
+  for (const relative of ROOT_INSTRUCTIONS) {
+    const found = documentSection(root, relative, headings)
+    if (found) return found
+  }
+  return null
+}
+
+function answerHowTheSystemIsOrganized(root) {
+  const found = firstDocumentSection(root, ["Structure", "Organization", "Architecture", "Estrutura", "Organização"])
+  return found
+    ? { answerable: true, ...found }
+    : { answerable: false, gap: "no structure or organization section in root instructions" }
+}
+
 
 function findStartupPath(root) {
   // 1. existing explicit scripts
@@ -110,19 +140,56 @@ function findStartupPath(root) {
   return null
 }
 
-function answerHowToStart(root) {
-  const found = findStartupPath(root)
-  if (!found) {
-    return {
-      answerable: false,
-      gap: "no startup path: no init.ps1, init.sh, scripts/check-*, Makefile, package lock, python manifest, other-stack manifest or CI workflow",
+function findStartPath(root) {
+  if (pathExists(path.join(root, "init.ps1"))) return { command: ".\\init.ps1", source: "init.ps1" }
+  if (pathExists(path.join(root, "init.sh"))) return { command: "./init.sh", source: "init.sh" }
+
+  const packageManagers = [
+    { lock: "package-lock.json", pm: "npm" },
+    { lock: "pnpm-lock.yaml", pm: "pnpm" },
+    { lock: "yarn.lock", pm: "yarn" },
+    { lock: "bun.lockb", pm: "bun" },
+  ]
+  const packageScripts = readJsonIfExists(path.join(root, "package.json"))?.scripts ?? {}
+  const packageManager = packageManagers.find(({ lock }) => pathExists(path.join(root, lock)))?.pm ?? "npm"
+  for (const name of ["start", "dev", "serve", "preview"]) {
+    if (packageScripts[name]) return { command: `${packageManager} run ${name}`, source: "package.json" }
+  }
+
+  const makefile = readTextIfExists(path.join(root, "Makefile"))
+  if (makefile) {
+    for (const target of ["start", "dev", "serve"]) {
+      if (new RegExp(`^${target}:`, "m").test(makefile)) return { command: `make ${target}`, source: "Makefile" }
     }
   }
-  return { answerable: true, source: found.source, command: found.command ?? found.note }
+
+  const documented = firstDocumentSection(root, ["Run the docs locally", "Start", "Quick Start", "Início Rápido"])
+  return documented ? { command: documented.detail, source: documented.source } : null
+}
+
+function answerHowToInstallAndStart(root) {
+  const installation = firstDocumentSection(root, ["Installation", "Install", "Quick Start", "Instalação", "Início Rápido"])
+  const startup = findStartPath(root)
+  if (!installation || !startup) {
+    return { answerable: false, gap: "no installation documentation and startup path" }
+  }
+  return {
+    answerable: true,
+    source: installation.source,
+    detail: `${installation.detail} Start: ${startup.command}`,
+  }
+}
+
+function answerHowToVerify(root) {
+  const documented = firstDocumentSection(root, ["Verification", "Verify", "Testing", "Verificação"])
+  if (documented) return { answerable: true, ...documented }
+  const found = findStartupPath(root)
+  if (found) return { answerable: true, source: found.source, command: found.command ?? found.note }
+  return { answerable: false, gap: "no verification section or discovered check command" }
 }
 
 // ---------------------------------------------------------------------------
-// questions 3 & 4 — progress and feature state (harness-session-start order)
+// questions 5 & 6 — progress and feature state (harness-session-start order)
 
 const PROGRESS_FILES = [path.join(".specs", "project", "STATE.md"), path.join("docs", "harness", "progress.md"), "agent-progress.md"]
 const FEATURE_FILES = ["feature_list.json", path.join(".specs", "features")]
@@ -232,14 +299,21 @@ function answerNextAction(root) {
 
 export function freshSessionCheck(root) {
   const questions = [
-    { question: "What does this repo do?", answer: answerWhatTheRepoDoes(root) },
-    { question: "How do I start and verify?", answer: answerHowToStart(root) },
-    { question: "What is unfinished?", answer: answerWhatIsUnfinished(root) },
-    { question: "What is the single next action?", answer: answerNextAction(root) },
+    { question: "What does this system do?", answer: answerWhatTheRepoDoes(root) },
+    { question: "How is it organized?", answer: answerHowTheSystemIsOrganized(root) },
+    { question: "How do I install and start it?", answer: answerHowToInstallAndStart(root) },
+    { question: "How do I verify it works?", answer: answerHowToVerify(root) },
+    { question: "What is the current progress?", answer: answerWhatIsUnfinished(root) },
+    { question: "What is the next task?", answer: answerNextAction(root) },
   ]
   const answerable = questions.filter((entry) => entry.answer.answerable).length
-  return { questions, answerable, total: questions.length, exitCode: answerable === questions.length ? 0 : 1 }
+  return { questions, answerable, total: questions.length, phase: inspectPhase(root), exitCode: answerable === questions.length ? 0 : 1 }
 }
+function inspectPhase(root) {
+  const state = readJsonIfExists(path.join(root, STATE_REL))
+  return state && typeof state.phase === "string" ? state.phase : null
+}
+
 
 function renderRows(result) {
   const rows = result.questions.map((entry, index) => {
@@ -267,17 +341,16 @@ function runCli() {
     // Exit 2: the assert itself broke. A harness blocker, never a project failure.
     console.error(`harness-freshsession could not run: ${error.message}`)
     process.exitCode = 2
-    return
   }
 
   if (args.includes("--json")) {
     console.log(JSON.stringify(result, null, 2))
   } else if (result.exitCode === 0) {
-    console.log(`fresh-session: ${result.answerable} of ${result.total} questions answerable from files.`)
+    console.log(`fresh-session: ${result.answerable} of ${result.total} questions answerable from files${result.phase ? ` | PREVC phase: ${result.phase}` : ""}.`)
     console.log(renderRows(result))
     console.log("Result: a fresh session can orient from the repository alone.")
   } else {
-    console.log(`fresh-session: ${result.answerable} of ${result.total} questions answerable from files.`)
+    console.log(`fresh-session: ${result.answerable} of ${result.total} questions answerable from files${result.phase ? ` | PREVC phase: ${result.phase}` : ""}.`)
     console.log(renderRows(result))
     console.log(`Result: a fresh session cannot orient — ${result.total - result.answerable} question(s) unresolved. The gaps above name what is missing.`)
   }

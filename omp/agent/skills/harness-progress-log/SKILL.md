@@ -1,6 +1,6 @@
 ---
 name: harness-progress-log
-description: Manage generic harness progress files. Use when updating STATE.md, docs/harness/progress.md, or agent-progress.md while preserving blockers and decisions.
+description: "Updates narrative progress files like STATE.md. Use when recording milestone progress, blockers, or execution notes. Do NOT use for structured feature tracking (use harness-feature-state)."
 ---
 
 # Harness Progress Log

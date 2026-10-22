@@ -1,6 +1,6 @@
 ---
 name: codebase-design
-description: Design or improve a module interface, test seam, or architecture boundary. Use when reducing coupling, improving testability, or evaluating module depth.
+description: "Designs module boundaries and test seams to minimize coupling. Use when refactoring internal module contracts or boundaries. Do NOT use for system-wide service topology (use backend-architect)."
 ---
 
 # Codebase Design

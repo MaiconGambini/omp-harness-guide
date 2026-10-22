@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: Use when you have a spec or requirements for a multi-step task, before touching code
+description: "Create detailed implementation plans with bite-sized tasks. Use when planning multi-step code changes from a spec. Do NOT use for multi-session roadmaps (use wayfinder)."
 ---
 
 # Writing Plans

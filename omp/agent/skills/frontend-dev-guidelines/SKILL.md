@@ -1,6 +1,6 @@
 ---
 name: frontend-dev-guidelines
-description: "Opinionated frontend development standards for modern React + TypeScript applications. Covers Suspense-first data fetching, lazy loading, feature-based architecture, MUI v7 styling, TanStack Router..."
+description: "Standards for React, TypeScript, Suspense, and MUI. Use when building or refactoring React client applications. Do NOT use for Next.js App Router patterns (use nextjs-app-router-patterns)."
 risk: unknown
 source: community
 date_added: "2026-02-27"

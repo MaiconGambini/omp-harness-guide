@@ -108,6 +108,90 @@ function recordEntry(root, argv, nowIso) {
   fs.appendFileSync(path.join(root, BENCH_FILE), `${JSON.stringify(entry)}\n`, "utf8")
   return entry
 }
+function measurement(value, reason = "not instrumented by benchmark runner") {
+  if (Number.isFinite(value)) return { value, status: "measured" }
+  return { value: null, status: "unavailable", reason }
+}
+
+function loadScenarioSet(scenario) {
+  const source = fs.readFileSync(scenario, "utf8")
+  const parsed = JSON.parse(source)
+  if (parsed?.schemaVersion !== 1 || !Array.isArray(parsed.scenarios)) throw new Error("scenario must be schemaVersion 1 with scenarios")
+  const classes = ["simple", "medium", "full"]
+  const byClass = Object.fromEntries(parsed.scenarios.map((entry) => [entry.class, entry]))
+  if (classes.some((className) => !byClass[className])) throw new Error("scenario must contain simple, medium and full classes")
+  return { parsed, classes, byClass }
+}
+
+export function captureBenchmark({ controls, scenario, runs = 3, output, now = () => Date.now() }) {
+  if (controls !== "disabled" && controls !== "enabled") throw new Error("--controls must be disabled or enabled")
+  if (!scenario || !output) throw new Error("--scenario and --output are required")
+  if (!Number.isInteger(runs) || runs < 3) throw new Error("--runs must be an integer of at least 3")
+  const scenarioSet = String(scenario).replaceAll("\\", "/")
+  const scenarioPath = path.resolve(scenario)
+  const { classes, byClass } = loadScenarioSet(scenarioPath)
+  const results = {}
+  for (const className of classes) {
+    const definition = byClass[className]
+    results[className] = []
+    for (let run = 1; run <= runs; run += 1) {
+      const started = now()
+      const ended = now()
+      const supplied = definition.measurements ?? {}
+      results[className].push({
+        run,
+        scenarioId: definition.id,
+        scenarioClass: className,
+        controls,
+        wallTime: measurement(Math.max(0, ended - started)),
+        calls: measurement(supplied.calls),
+        retries: measurement(supplied.retries),
+        context: measurement(supplied.context),
+        tokens: measurement(supplied.tokens),
+        gateOverhead: measurement(supplied.gateOverhead),
+        findings: measurement(supplied.findings),
+        rework: measurement(supplied.rework),
+        regressions: measurement(supplied.regressions),
+      })
+    }
+  }
+  const result = {
+    schemaVersion: 1,
+    kind: "harness-benchmark",
+    controls,
+    scenarioSet,
+    scenarioSetId: loadScenarioSet(scenarioPath).parsed.scenarioSet ?? null,
+    runs,
+    results,
+  }
+  fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true })
+  fs.writeFileSync(path.resolve(output), `${JSON.stringify(result, null, 2)}\n`, "utf8")
+  return result
+}
+
+function delta(baseline, candidate) {
+  if (baseline?.status !== "measured" || candidate?.status !== "measured") return { value: null, status: "unavailable", reason: "both baseline and candidate measurements required" }
+  return { value: candidate.value - baseline.value, status: "measured" }
+}
+
+export function compareBenchmark(baseline, candidate) {
+  if (baseline?.schemaVersion !== 1 || candidate?.schemaVersion !== 1) throw new Error("unsupported benchmark schema")
+  if (baseline.scenarioSet !== candidate.scenarioSet) throw new Error("baseline and candidate scenario sets differ")
+  const classes = ["simple", "medium", "full"]
+  const results = {}
+  for (const className of classes) {
+    const left = baseline.results?.[className] ?? []
+    const right = candidate.results?.[className] ?? []
+    const metrics = ["wallTime", "calls", "retries", "context", "tokens", "gateOverhead", "findings", "rework", "regressions"]
+    results[className] = { runs: Math.min(left.length, right.length), unavailable: [], deltas: {} }
+    for (const metric of metrics) {
+      const values = left.map((observation, index) => delta(observation[metric], right[index]?.[metric]))
+      results[className].deltas[metric] = values
+      if (values.some((value) => value.status === "unavailable")) results[className].unavailable.push(metric)
+    }
+  }
+  return { schemaVersion: 1, kind: "harness-benchmark-comparison", scenarioSet: baseline.scenarioSet, controls: { baseline: baseline.controls, candidate: candidate.controls }, classes, results }
+}
 
 function renderSummary(summary) {
   const out = [`benchmark — ${summary.records} record(s), ${summary.totalMs} ms total, ${summary.totalCalls} calls`, ""]
@@ -118,9 +202,45 @@ function renderSummary(summary) {
   if (phases.length === 0) out.push("  no records yet — advisory only, nothing to report")
   return out.join("\n")
 }
-
 function main(argv, root, nowIso) {
   const command = argv[0]
+  if (command === "capture") {
+    try {
+      const scenario = flag(argv.slice(1), "scenario")
+      const output = flag(argv.slice(1), "output")
+      const result = captureBenchmark({
+        controls: flag(argv.slice(1), "controls"),
+        scenario,
+        runs: Number(flag(argv.slice(1), "runs") ?? 3),
+        output: output ? path.resolve(root, output) : undefined,
+        now: () => Date.now(),
+      })
+      process.stdout.write(`captured ${result.controls}: ${result.runs} run(s) per class\n`)
+      return 0
+    } catch (error) {
+      process.stderr.write(`${error.message}\n`)
+      return 2
+    }
+  }
+  if (command === "compare") {
+    try {
+      const baselinePath = flag(argv.slice(1), "baseline")
+      const candidatePath = flag(argv.slice(1), "candidate")
+      const output = flag(argv.slice(1), "output")
+      if (!baselinePath || !candidatePath || !output) throw new Error("--baseline, --candidate and --output are required")
+      const comparison = compareBenchmark(
+        JSON.parse(fs.readFileSync(path.resolve(root, baselinePath), "utf8")),
+        JSON.parse(fs.readFileSync(path.resolve(root, candidatePath), "utf8")),
+      )
+      fs.mkdirSync(path.dirname(path.resolve(root, output)), { recursive: true })
+      fs.writeFileSync(path.resolve(root, output), `${JSON.stringify(comparison, null, 2)}\n`, "utf8")
+      process.stdout.write(`compared ${comparison.controls.baseline} to ${comparison.controls.candidate}\n`)
+      return 0
+    } catch (error) {
+      process.stderr.write(`${error.message}\n`)
+      return 2
+    }
+  }
   if (command === "record") {
     let entry
     try {
@@ -138,9 +258,11 @@ function main(argv, root, nowIso) {
     else process.stdout.write(`${renderSummary(summary)}\n`)
     return 0
   }
-  process.stderr.write(`unknown command: ${command}. Use record | summary.\n`)
+  process.stderr.write(`unknown command: ${command}. Use record | summary | capture | compare.\n`)
   return 2
 }
+
+export { main }
 
 // fileURLToPath decodes percent-encoding + the Windows drive letter; a regex on
 // URL.pathname leaves a spaced install path encoded and the guard silently false.

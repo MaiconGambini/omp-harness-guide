@@ -3,13 +3,13 @@ providers:
   webSearchOrder:
     []
 modelRoles:
-  default: openai-codex/gpt-5.6-terra:xhigh
-  scheduler: openai-codex/gpt-5.6-luna:xhigh
-  review: opencode-go/deepseek-v4-flash:max
-  refine: opencode-go/deepseek-v4-flash:max
-  implement: opencode-go/deepseek-v4-flash:max
-  research: opencode-go/deepseek-v4-flash:max
-  test: opencode-go/deepseek-v4-flash:max
+  default: anthropic/claude-opus-5-5:medium
+  scheduler: google-antigravity/gemini-3.8-flash:high
+  review: openai-codex/gpt-6-luna:high
+  refine: google-antigravity/gemini-3.8-flash:high
+  implement: google-antigravity/gemini-3.8-flash:high
+  research: google-antigravity/gemini-3.8-flash:high
+  test: google-antigravity/gemini-3.8-flash:high
 symbolPreset: unicode
 composer:
   shape: claude-inline-context

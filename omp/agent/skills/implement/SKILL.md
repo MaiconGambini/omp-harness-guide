@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Implement a piece of work based on a spec or set of tickets."
+description: "Implement software changes based on specs or tickets. Use when executing approved tasks with tests. Do NOT use for drafting plans or architecture (use plan-architect)."
 ---
 
 Implement the work described by the user in the spec or tickets.

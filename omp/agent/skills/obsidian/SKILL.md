@@ -1,6 +1,6 @@
 ---
 name: obsidian
-description: Interact with Obsidian vault via Local REST API MCP — read, write, search, edit notes, execute commands, and manage files.
+description: "Manage notes and metadata via the Local REST API MCP. Use when reading, writing, or querying an Obsidian vault. Do NOT use for general project documentation (use writing)."
 allowed-tools: Bash(obsidian:*) obsidian_vault_read obsidian_vault_write obsidian_vault_append obsidian_vault_patch obsidian_vault_delete obsidian_vault_move obsidian_vault_copy obsidian_vault_list obsidian_vault_get_document_map obsidian_search_simple obsidian_search_query obsidian_tag_list obsidian_command_list obsidian_command_execute obsidian_open_file obsidian_active_file_get_path
 ---
 

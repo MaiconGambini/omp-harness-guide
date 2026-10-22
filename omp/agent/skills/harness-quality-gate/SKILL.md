@@ -1,6 +1,6 @@
 ---
 name: harness-quality-gate
-description: Run the measured quality gate and the risk router, react to the verdict, and write back what the numbers taught. Use before returning a lane, before a commit, and whenever review depth must be decided. Per-change and binary — for a milestone scorecard use harness-quality-snapshot.
+description: "Run measured quality gates and risk router. Use when checking lane diffs before commit or handoff. Do NOT use for milestone scorecards (use harness-quality-snapshot)."
 ---
 
 # Harness Quality Gate

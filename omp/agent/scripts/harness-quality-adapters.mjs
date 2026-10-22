@@ -11,10 +11,29 @@
 // `--no-project-commands`) to measure with built-in adapters only. See
 // docs/harness/measured-gates.md.
 //
-// Every adapter returns `{ value, detail }` or `{ unavailable: "<reason>" }`. Unavailable is
+// Every adapter returns `{ value, detail }` or `{ unavailable: "<reason>", kind }`, where
+// `kind` classifies WHY there is no measurement:
+//
+//   "not_configured"  — nothing was ever wired up for this metric in this project (no
+//                       command declared, no tool for the stack, no config file). A gap
+//                       to name, but a KNOWN one: it does not escalate the review tier,
+//                       because escalating on it means escalating forever.
+//   "not_applicable"  — the control does not apply to this project or this diff.
+//   "unavailable"     — it SHOULD have measured and did not: timeout, crash, unparseable
+//                       output, a command that broke. Fail-closed, escalates. This is the
+//                       DEFAULT when `kind` is absent, so a new adapter is conservative.
+//
+// The distinction exists because 15 of 21 metrics in this repo have no instrument, so
+// treating "never configured" and "broke just now" as the same state made `auto` tier
+// unreachable and turned the gap accounting into permanent noise.
+// Unavailable is
 // a named gap: not a pass, not a failure.
 
-import { spawnSync } from "node:child_process"
+import fs from "node:fs"
+import { exec, spawnSync } from "node:child_process"
+import { promisify } from "node:util"
+
+const execPromise = promisify(exec)
 import path from "node:path"
 import {
   COMMAND_TIMEOUT_MS,
@@ -27,19 +46,32 @@ import {
   sourceHash,
   SOURCE_FILE_PATTERN,
 } from "./harness-quality-core.mjs"
-import { listFiles, pathExists } from "./harness-common.mjs"
+import { fileURLToPath } from "node:url"
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const commonModule = fs.existsSync(path.join(__dirname, "harness-common.mjs"))
+  ? await import("./harness-common.mjs")
+  : await import("../../../scripts/harness-common.mjs")
+const { listFiles, pathExists } = commonModule
 // The GLOBAL findings module, imported by module path — never shelled out, never a
 // project-local copy. See the TRUST BOUNDARY note at the top and the "adherence"
 // section in docs/harness/measured-gates.md: this import does not widen the
 // project-local-command trust boundary.
-import {
+const findingsModule = fs.existsSync(path.join(__dirname, "harness-risk-router.mjs"))
+  ? await import("./harness-findings.mjs")
+  : await import("../../../scripts/harness-findings.mjs")
+const {
   assessWindow,
   citationCompetence,
   readWindow,
   recallEstimate,
   resolveRulePointer,
   unciteableRatio,
-} from "./harness-findings.mjs"
+} = findingsModule
+const completionGateModule = fs.existsSync(path.join(__dirname, "harness-completion-gate.mjs"))
+  ? await import("./harness-completion-gate.mjs")
+  : await import("../../../scripts/harness-completion-gate.mjs")
+const { validateCompletionFile } = completionGateModule
+
 
 // A shell IS used here — these are project-authored command lines, not paths. The timeout is
 // the important part: a hung test runner would otherwise hang the agent's lane forever.
@@ -58,6 +90,268 @@ export function runProjectCommand(commandLine, cwd) {
     stderr: result.stderr ?? "",
     timedOut: result.signal === "SIGTERM" && result.status === null,
   }
+}
+
+export async function runProjectCommandAsync(commandLine, cwd) {
+  try {
+    const { stdout, stderr } = await execPromise(commandLine, {
+      encoding: "utf8",
+      cwd,
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: COMMAND_TIMEOUT_MS,
+      windowsHide: true,
+    })
+    return {
+      ok: true,
+      code: 0,
+      stdout: stdout ?? "",
+      stderr: stderr ?? "",
+      timedOut: false,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      code: typeof error.code === "number" ? error.code : 1,
+      stdout: error.stdout ?? "",
+      stderr: error.stderr ?? (error.message || ""),
+      timedOut: Boolean(error.killed && (error.signal === "SIGTERM" || error.code === "ETIMEDOUT")),
+    }
+  }
+}
+
+export const SCANNER_EXIT_CONTRACTS = Object.freeze({
+  default: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  eslint: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  bandit: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  brakeman: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1, 3]),
+    allowedExitCodes: Object.freeze([0, 1, 3]),
+  }),
+  radon: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  "dependency-cruiser": Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  "import-linter": Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  "npm-audit": Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  redteam: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  authz: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  cooldown: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  skill_lint: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  mutation: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  security: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  complexity: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  boundaries: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  prose: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  comments: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  file_growth: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  function_size: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  eval: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+  delivery: Object.freeze({
+    clean: Object.freeze([0]),
+    findings: Object.freeze([1]),
+    allowedExitCodes: Object.freeze([0, 1]),
+  }),
+})
+
+export function evaluateScannerExitContract(scanner, result, options = {}) {
+  const label = typeof scanner === "string" ? scanner : (scanner?.name ?? "scanner")
+
+  if (
+    options.strict_exit_codes === false ||
+    options.strictExitCodes === false ||
+    options.config?.strict_exit_codes === false ||
+    options.thresholds?.strict_exit_codes === false
+  ) {
+    return {
+      ok: false,
+      unavailable: `${label}: strict_exit_codes: false bypass is forbidden`,
+      kind: "unavailable",
+    }
+  }
+
+  if (!result) {
+    return {
+      ok: false,
+      unavailable: `${label} produced no execution result`,
+      kind: "unavailable",
+    }
+  }
+
+  if (result.timedOut) {
+    return {
+      ok: false,
+      unavailable: `${label} timed out after ${COMMAND_TIMEOUT_MS / 1000}s`,
+      kind: "unavailable",
+    }
+  }
+
+  if (result.code === null || result.code === undefined) {
+    return {
+      ok: false,
+      unavailable: `${label} failed with unexpected exit null`,
+      kind: "unavailable",
+    }
+  }
+
+  const contractKey = typeof scanner === "string" ? scanner.replace(/^commands\./, "") : "default"
+  const contract = SCANNER_EXIT_CONTRACTS[contractKey] ?? SCANNER_EXIT_CONTRACTS.default
+  const allowed = options.allowedExitCodes ?? contract.allowedExitCodes ?? [0, 1]
+
+  if (typeof result.code !== "number" || result.code < 0 || !allowed.includes(result.code)) {
+    return {
+      ok: false,
+      unavailable: `${label} failed with unexpected exit ${result.code}`,
+      kind: "unavailable",
+    }
+  }
+
+  const clean = (contract.clean ?? [0]).includes(result.code)
+  const findings = (contract.findings ?? [1]).includes(result.code)
+
+  return {
+    ok: true,
+    code: result.code,
+    clean,
+    findings,
+  }
+}
+
+export async function fromConfiguredCommandAsync(ctx, commandLine, label, options = {}) {
+  if (!ctx.projectCommands) {
+    return { unavailable: `${label} is configured but project commands are disabled (--no-project-commands)`, kind: "unavailable" }
+  }
+  const { countingFailures = false, run = runProjectCommandAsync, allowedExitCodes, strict_exit_codes, ...rest } = options
+
+  if (
+    strict_exit_codes === false ||
+    rest.strictExitCodes === false ||
+    ctx?.strict_exit_codes === false ||
+    ctx?.commands?.strict_exit_codes === false ||
+    ctx?.thresholds?.strict_exit_codes === false
+  ) {
+    return { unavailable: `${label}: strict_exit_codes: false bypass is forbidden`, kind: "unavailable" }
+  }
+
+  const runner = run
+  const result = await runner(commandLine, ctx.root)
+  if (result.timedOut) return { unavailable: `${label} timed out after ${COMMAND_TIMEOUT_MS / 1000}s`, kind: "unavailable" }
+  const stdoutLines = String(result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const lastLine = stdoutLines.length > 0 ? stdoutLines[stdoutLines.length - 1] : ""
+  if (lastLine.startsWith("not_applicable:")) {
+    const reason = lastLine.slice("not_applicable:".length).trim() || "not applicable"
+    return { not_applicable: reason, unavailable: reason, kind: "not_applicable" }
+  }
+  if (lastLine.startsWith("unavailable:")) {
+    const reason = lastLine.slice("unavailable:".length).trim() || "unavailable"
+    return { unavailable: reason, kind: "unavailable" }
+  }
+
+  if (countingFailures) {
+    if (result.code === null || result.code === undefined) {
+      return { unavailable: `${label} failed with unexpected exit null`, kind: "unavailable" }
+    }
+    const parsed = countFailures(result.stdout + result.stderr)
+    const detail = redact(`${label} (exit ${result.code})`)
+    if (parsed === null) {
+      if (!result.ok) return { value: 1, detail: `${detail} — no count parsed, nonzero exit` }
+      return { unavailable: `${label} produced no failure count (exit 0) — the output contract is a failed/skipped count; a missing count is a gap, never a pass`, kind: "unavailable" }
+    }
+    return { value: parsed, detail }
+  }
+
+  const exitCheck = evaluateScannerExitContract(label, result, { allowedExitCodes, strict_exit_codes, ...rest })
+  if (!exitCheck.ok) {
+    return { unavailable: exitCheck.unavailable, kind: "unavailable" }
+  }
+
+  const parsed = lastNumber(result.stdout)
+  const detail = redact(`${label} (exit ${result.code})`)
+  if (parsed === null || !Number.isFinite(parsed)) {
+    return { unavailable: `${label} produced no number (contract: last number on the last non-empty line)`, kind: "unavailable" }
+  }
+  return { value: parsed, detail }
 }
 
 function probe(commandLine, cwd) {
@@ -127,19 +421,59 @@ export function countFailures(text) {
 //   - exit 0 with NO count is `unavailable` — the old fallback scored it 0, a PASS, so a
 //     test runner whose summary format changed silently reported zero regressions
 //   - a NONZERO exit with no count is value 1 — the suite failed but printed no count
-export function fromConfiguredCommand(ctx, commandLine, label, { countingFailures = false, run = runProjectCommand } = {}) {
+export function fromConfiguredCommand(ctx, commandLine, label, { countingFailures = false, run = runProjectCommand, allowedExitCodes, strict_exit_codes, ...rest } = {}) {
   if (!ctx.projectCommands) {
-    return { unavailable: `${label} is configured but project commands are disabled (--no-project-commands)` }
+    return { unavailable: `${label} is configured but project commands are disabled (--no-project-commands)`, kind: "unavailable" }
   }
+
+  if (
+    strict_exit_codes === false ||
+    rest.strictExitCodes === false ||
+    ctx?.strict_exit_codes === false ||
+    ctx?.commands?.strict_exit_codes === false ||
+    ctx?.thresholds?.strict_exit_codes === false
+  ) {
+    return { unavailable: `${label}: strict_exit_codes: false bypass is forbidden`, kind: "unavailable" }
+  }
+
   const result = run(commandLine, ctx.root)
-  if (result.timedOut) return { unavailable: `${label} timed out after ${COMMAND_TIMEOUT_MS / 1000}s` }
-  const parsed = countingFailures ? countFailures(result.stdout + result.stderr) : lastNumber(result.stdout)
-  // The command line can carry a credential (PGPASSWORD=… npm test); reports are committed.
+  if (result.timedOut) return { unavailable: `${label} timed out after ${COMMAND_TIMEOUT_MS / 1000}s`, kind: "unavailable" }
+  const stdoutLines = String(result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const lastLine = stdoutLines.length > 0 ? stdoutLines[stdoutLines.length - 1] : ""
+  if (lastLine.startsWith("not_applicable:")) {
+    const reason = lastLine.slice("not_applicable:".length).trim() || "not applicable"
+    return { not_applicable: reason, unavailable: reason, kind: "not_applicable" }
+  }
+  if (lastLine.startsWith("unavailable:")) {
+    const reason = lastLine.slice("unavailable:".length).trim() || "unavailable"
+    return { unavailable: reason, kind: "unavailable" }
+  }
+
+  if (countingFailures) {
+    if (result.code === null || result.code === undefined) {
+      return { unavailable: `${label} failed with unexpected exit null`, kind: "unavailable" }
+    }
+    const parsed = countFailures(result.stdout + result.stderr)
+    const detail = redact(`${label} (exit ${result.code})`)
+    if (parsed === null) {
+      if (!result.ok) return { value: 1, detail: `${detail} — no count parsed, nonzero exit` }
+      return { unavailable: `${label} produced no failure count (exit 0) — the output contract is a failed/skipped count; a missing count is a gap, never a pass`, kind: "unavailable" }
+    }
+    return { value: parsed, detail }
+  }
+
+  const exitCheck = evaluateScannerExitContract(label, result, { allowedExitCodes, strict_exit_codes, ...rest })
+  if (!exitCheck.ok) {
+    return { unavailable: exitCheck.unavailable, kind: "unavailable" }
+  }
+
+  const parsed = lastNumber(result.stdout)
   const detail = redact(`${label} (exit ${result.code})`)
-  if (parsed === null) {
-    if (countingFailures && !result.ok) return { value: 1, detail: `${detail} — no count parsed, nonzero exit` }
-    if (countingFailures) return { unavailable: `${label} produced no failure count (exit 0) — the output contract is a failed/skipped count; a missing count is a gap, never a pass` }
-    return { unavailable: `${label} produced no number (contract: last number on the last non-empty line)` }
+  if (parsed === null || !Number.isFinite(parsed)) {
+    return { unavailable: `${label} produced no number (contract: last number on the last non-empty line)`, kind: "unavailable" }
   }
   return { value: parsed, detail }
 }
@@ -195,7 +529,7 @@ export function coverageAdapter(ctx) {
     ? "run the test suite with --coverage (json-summary reporter) first"
     : "run the test suite with coverage reporting first"
   const reason = `no coverage artifact found — ${hint}`
-  return { line: { unavailable: reason }, branch: { unavailable: reason } }
+  return { line: { unavailable: reason, kind: "not_configured" }, branch: { unavailable: reason, kind: "not_configured" } }
 }
 
 export function complexityAdapter(ctx) {
@@ -203,9 +537,10 @@ export function complexityAdapter(ctx) {
 
   if (ctx.stack.python && probe("radon cc --version", ctx.root)) {
     const result = runProjectCommand("radon cc -j .", ctx.root)
-    if (!result.ok) return { unavailable: "radon cc failed" }
+    const exitCheck = evaluateScannerExitContract("radon", result)
+    if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
     const data = safeJson(result.stdout)
-    if (!data) return { unavailable: "radon output was not parseable JSON" }
+    if (!data) return { unavailable: "radon output was not parseable JSON", kind: "unavailable" }
     let max = 0
     let where = null
     for (const [file, blocks] of Object.entries(data)) {
@@ -221,11 +556,13 @@ export function complexityAdapter(ctx) {
 
   if (ctx.stack.js) {
     if (!probe("npx --no-install eslint --version", ctx.root)) {
-      return { unavailable: "eslint not installed — cyclomatic complexity unmeasured" }
+      return { unavailable: "eslint not installed — cyclomatic complexity unmeasured", kind: "not_configured" }
     }
     const result = runProjectCommand('npx --no-install eslint . --format json --rule "{\\"complexity\\":[\\"error\\",0]}"', ctx.root)
+    const exitCheck = evaluateScannerExitContract("eslint", result)
+    if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
     const data = safeJson(result.stdout)
-    if (!data) return { unavailable: "eslint produced no parseable JSON (check its config)" }
+    if (!data) return { unavailable: "eslint produced no parseable JSON (check its config)", kind: "unavailable" }
     let max = 0
     let where = null
     for (const file of data) {
@@ -240,7 +577,7 @@ export function complexityAdapter(ctx) {
     return { value: max, detail: where }
   }
 
-  return { unavailable: "no complexity tool detected for this stack" }
+  return { unavailable: "no complexity tool detected for this stack", kind: "not_configured" }
 }
 
 export function moduleSizeAdapter(ctx) {
@@ -250,7 +587,7 @@ export function moduleSizeAdapter(ctx) {
   // readable source tree. Tooling (eslint max-lines, RuboCop ClassLength) would add config
   // coupling for the same number.
   const files = listFiles(ctx.root, (file) => SOURCE_FILE_PATTERN.test(file) && !isVendored(file))
-  if (files.length === 0) return { unavailable: "no source files matched" }
+  if (files.length === 0) return { unavailable: "no source files matched", kind: "not_applicable" }
   let max = 0
   let where = null
   for (const file of files) {
@@ -268,22 +605,28 @@ export function securityAdapter(ctx) {
 
   if (ctx.stack.ruby && probe("bundle exec brakeman --version", ctx.root)) {
     const result = runProjectCommand("bundle exec brakeman --format json --confidence-level 2", ctx.root)
+    const exitCheck = evaluateScannerExitContract("brakeman", result)
+    if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
     const data = safeJson(result.stdout)
-    if (!data) return { unavailable: "brakeman output not parseable" }
+    if (!data) return { unavailable: "brakeman output not parseable", kind: "unavailable" }
     return { value: (data.warnings ?? []).length, detail: "brakeman confidence>=medium" }
   }
 
   if (ctx.stack.python && probe("bandit --version", ctx.root)) {
     const result = runProjectCommand("bandit -r . -f json -q", ctx.root)
+    const exitCheck = evaluateScannerExitContract("bandit", result)
+    if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
     const data = safeJson(result.stdout)
-    if (!data) return { unavailable: "bandit output not parseable" }
+    if (!data) return { unavailable: "bandit output not parseable", kind: "unavailable" }
     return { value: (data.results ?? []).filter((item) => item.issue_severity !== "LOW").length, detail: "bandit severity>=medium" }
   }
 
   if (ctx.stack.js) {
     const result = runProjectCommand("npm audit --json --audit-level=moderate", ctx.root)
+    const exitCheck = evaluateScannerExitContract("npm-audit", result)
+    if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
     const data = safeJson(result.stdout)
-    if (!data?.metadata?.vulnerabilities) return { unavailable: "npm audit produced no parseable metadata" }
+    if (!data?.metadata?.vulnerabilities) return { unavailable: "npm audit produced no parseable metadata", kind: "unavailable" }
     const counts = data.metadata.vulnerabilities
     return {
       value: (counts.moderate ?? 0) + (counts.high ?? 0) + (counts.critical ?? 0),
@@ -291,7 +634,7 @@ export function securityAdapter(ctx) {
     }
   }
 
-  return { unavailable: "no static security scanner detected for this stack" }
+  return { unavailable: "no static security scanner detected for this stack", kind: "not_configured" }
 }
 
 export function boundariesAdapter(ctx) {
@@ -299,36 +642,41 @@ export function boundariesAdapter(ctx) {
 
   if (ctx.stack.js && findAny(ctx.root, [".dependency-cruiser.js", ".dependency-cruiser.cjs", ".dependency-cruiser.json"])) {
     const result = runProjectCommand("npx --no-install depcruise . --output-type json", ctx.root)
+    const exitCheck = evaluateScannerExitContract("dependency-cruiser", result)
+    if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
     const data = safeJson(result.stdout)
-    if (!data?.summary) return { unavailable: "dependency-cruiser output not parseable" }
+    if (!data?.summary) return { unavailable: "dependency-cruiser output not parseable", kind: "unavailable" }
     return { value: data.summary.error ?? data.summary.violations ?? 0, detail: "dependency-cruiser" }
   }
 
   if (ctx.stack.python && findAny(ctx.root, [".importlinter", "setup.cfg"]) && probe("lint-imports --help", ctx.root)) {
     const result = runProjectCommand("lint-imports", ctx.root)
+    const exitCheck = evaluateScannerExitContract("import-linter", result)
+    if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
     return { value: result.ok ? 0 : 1, detail: "import-linter (binary result)" }
   }
 
-  return { unavailable: "no dependency-boundary config found (dependency-cruiser / import-linter / Packwerk)" }
+  return { unavailable: "no dependency-boundary config found (dependency-cruiser / import-linter / Packwerk)", kind: "not_configured" }
 }
 
 export function suiteAdapter(ctx, suiteName) {
   const suite = ctx.suites[suiteName] ?? {}
   if (!suite.command) {
-    return { unavailable: `no ${suiteName} suite declared — set suites.${suiteName}.command in agent-os/quality-thresholds.json` }
+    return { unavailable: `no ${suiteName} suite declared — set suites.${suiteName}.command in agent-os/quality-thresholds.json`, kind: "not_configured" }
   }
   return fromConfiguredCommand(ctx, suite.command, `suites.${suiteName}.command`, { countingFailures: true })
 }
 
 export function mutationAdapter(ctx) {
   if (!ctx.commands.mutation) {
-    return { unavailable: "no mutation command declared — set commands.mutation in agent-os/quality-thresholds.json" }
+    return { unavailable: "no mutation command declared — set commands.mutation in agent-os/quality-thresholds.json", kind: "not_configured" }
   }
   if (!ctx.projectCommands) {
     return { unavailable: "mutation command is configured but project commands are disabled (--no-project-commands)" }
   }
   const result = runProjectCommand(ctx.commands.mutation, ctx.root)
-  if (result.timedOut) return { unavailable: `mutation command timed out after ${COMMAND_TIMEOUT_MS / 1000}s` }
+  const exitCheck = evaluateScannerExitContract("commands.mutation", result)
+  if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
   const text = result.stdout + result.stderr
   const ratio =
     matchNumber(text, /mutation score[:\s]+([\d.]+)/i) ??
@@ -348,19 +696,145 @@ function matchNumber(text, pattern) {
 // is `unavailable` (named gap), never a default, never a zero. `redteam_quickcheck` and
 // `dependency_cooldown` are operator-fixed blocking policy; `authz_controls` is observe.
 export function redteamQuickcheckAdapter(ctx) {
-  if (!ctx.commands.redteam) return { unavailable: "no commands.redteam declared — set it to the harness-redteam-scan --metric command" }
+  if (!ctx.commands.redteam) return { unavailable: "no commands.redteam declared — set it to the harness-redteam-scan --metric command", kind: "not_configured" }
   return fromConfiguredCommand(ctx, ctx.commands.redteam, "commands.redteam")
 }
 
 export function authzControlsAdapter(ctx) {
-  if (!ctx.commands.authz) return { unavailable: "no commands.authz declared — set it to the harness-security-contract --metric command" }
+  if (!ctx.commands.authz) return { unavailable: "no commands.authz declared — set it to the harness-security-contract --metric command", kind: "not_configured" }
   return fromConfiguredCommand(ctx, ctx.commands.authz, "commands.authz")
 }
 
 export function dependencyCooldownAdapter(ctx) {
-  if (!ctx.commands.cooldown) return { unavailable: "no commands.cooldown declared — set it to the harness-dependency-cooldown --metric command" }
+  if (!ctx.commands.cooldown) return { unavailable: "no commands.cooldown declared — set it to the harness-dependency-cooldown --metric command", kind: "not_configured" }
   return fromConfiguredCommand(ctx, ctx.commands.cooldown, "commands.cooldown")
 }
+
+export function completionGateAdapter(ctx) {
+  const relative = ctx.commands.completion_payload ?? path.join("agent-os", "completion.json")
+  const resolved = resolveInsideRoot(ctx.root, relative)
+  if (!resolved) return { unavailable: "completion payload resolves outside the repository", kind: "unavailable" }
+  if (!fs.existsSync(resolved)) {
+    return { unavailable: `no completion payload at ${relative}`, kind: "unavailable" }
+  }
+  const result = validateCompletionFile(resolved)
+  if (!result.valid) return { value: 1, detail: `completion payload rejected: ${result.errors.join(", ")}` }
+  return { value: 0, detail: `completion payload accepted: ${relative}` }
+}
+
+export function memoryAvailableAdapter(ctx) {
+  const endpoint = ctx.commands.memory_url ?? process.env.AI_MEMORY_URL ?? "http://127.0.0.1:49374/health"
+  let parsed
+  try {
+    parsed = new URL(endpoint)
+  } catch {
+    return { unavailable: "memory health check URL is invalid", kind: "unavailable" }
+  }
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    return { unavailable: "memory health check URL is invalid", kind: "unavailable" }
+  }
+  const result = spawnSync("curl", ["--fail", "--silent", "--show-error", "--max-time", "2", endpoint], {
+    cwd: ctx.root,
+    encoding: "utf8",
+    timeout: 3000,
+    windowsHide: true,
+  })
+  if (result.status === 0) return { value: 1, detail: `memory health check: ${endpoint}` }
+  const reason = result.error?.message ?? (result.stderr || `exit ${result.status}`)
+  return { unavailable: `memory health check failed: ${redact(reason)}`, kind: "unavailable" }
+}
+
+export function evalRegressionsAdapter(ctx) {
+  if (!ctx.commands.eval) return { unavailable: "no commands.eval declared — set it to the harness-eval-runner --regression --metric command", kind: "not_configured" }
+  return fromConfiguredCommand(ctx, ctx.commands.eval, "commands.eval")
+}
+
+export function deliveryConfigAdapter(ctx) {
+  if (!ctx.commands.delivery) return { unavailable: "no commands.delivery declared — set it to the harness-delivery-preflight --config-check --metric command", kind: "not_configured" }
+  return fromConfiguredCommand(ctx, ctx.commands.delivery, "commands.delivery")
+}
+
+// Phase 1 anti-slop metrics are command-backed. Keep each adapter explicit so a declared
+// threshold can never silently fall through to the gate's "no adapter" gap.
+function commandMetricAdapter(ctx, key, label, options = {}) {
+  if (!ctx.commands[key]) {
+    return { unavailable: `no ${label} command declared — set commands.${key} in agent-os/quality-thresholds.json`, kind: "not_configured" }
+  }
+  return fromConfiguredCommand(ctx, ctx.commands[key], `commands.${key}`, { ...options, run: options.run ?? runProjectCommand })
+}
+
+export function proseTellsAdapter(ctx, options = {}) {
+  return commandMetricAdapter(ctx, "prose", "prose tells", options)
+}
+
+export function narratingCommentsAdapter(ctx, options = {}) {
+  return commandMetricAdapter(ctx, "comments", "narrating comments", options)
+}
+
+export function fileGrowthDeltaAdapter(ctx, options = {}) {
+  return commandMetricAdapter(ctx, "file_growth", "file growth", options)
+}
+
+export function functionSizeAdapter(ctx) {
+  return commandMetricAdapter(ctx, "function_size", "function size")
+}
+
+export function bypassFindingsAdapter(ctx, options = {}) {
+  return commandMetricAdapter(ctx, "bypass_scan", "bypass scan", { ...options, allowedExitCodes: [0] })
+}
+
+export function skillLintAdapter(ctx, options = {}) {
+  if (!ctx.commands.skill_lint) {
+    return { unavailable: "no skill_lint command declared — set commands.skill_lint in agent-os/quality-thresholds.json", kind: "not_configured" }
+  }
+  if (!ctx.projectCommands) {
+    return { unavailable: "commands.skill_lint is configured but project commands are disabled (--no-project-commands)" }
+  }
+  const run = options.run ?? runProjectCommand
+  const result = run(ctx.commands.skill_lint, ctx.root)
+  const exitCheck = evaluateScannerExitContract("commands.skill_lint", result, options)
+  if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
+  const data = safeJson(result.stdout)
+  if (data && typeof data === "object") {
+    if (data.status === "unavailable") {
+      return { unavailable: data.reason ?? "no skills directory", kind: "not_configured" }
+    }
+    const errorCount = Array.isArray(data.errors) ? data.errors.length : (data.ok ? 0 : 1)
+    return { value: errorCount, detail: redact(`commands.skill_lint (exit ${result.code}) — ${data.skillsChecked ?? 0} skills, ${errorCount} error(s)`) }
+  }
+  if (result.code === 0) {
+    const parsed = lastNumber(result.stdout)
+    if (parsed !== null) {
+      return { value: parsed, detail: redact(`commands.skill_lint (exit ${result.code})`) }
+    }
+  }
+  const reason = result.code !== 0
+    ? `commands.skill_lint failed (exit ${result.code}) without parseable JSON`
+    : "commands.skill_lint produced neither parseable JSON nor a count number"
+  return { unavailable: reason }
+}
+
+export function evidenceRungMinAdapter(ctx, { reportSourceHash } = {}) {
+  const window = readWindow({ root: ctx.root, runs: 1 })
+  const hash = reportSourceHash ?? sourceHash(ctx.root, { fresh: true })
+  const assessed = assessWindow(window, {
+    report: hash ? { sourceHash: hash } : null,
+    tier: "sampling",
+    root: ctx.root,
+  })
+  if (!assessed.ok) return { unavailable: `findings window unavailable — ${assessed.errors.join(" · ")}` }
+  const rungs = []
+  for (const entry of window) {
+    for (const finding of entry.data?.findings ?? []) {
+      if (Number.isInteger(finding?.evidence_rung) && finding.evidence_rung >= 1 && finding.evidence_rung <= 5) {
+        rungs.push(finding.evidence_rung)
+      }
+    }
+  }
+  if (rungs.length === 0) return { unavailable: "findings window contains no evidence_rung values" }
+  return { value: Math.min(...rungs), detail: "minimum evidence_rung from hash-bound findings window" }
+}
+
 
 function isVendored(file) {
   return /[\\/](node_modules|dist|build|coverage|vendor|\.venv|__pycache__|\.git)[\\/]/.test(file)
@@ -543,9 +1017,11 @@ export function adherenceAdapter(ctx, { reportSourceHash, git } = {}) {
   if (!paidEntry) {
     rows.citation_competence = {
       unavailable: "no paid-reviewer sample in the newest findings file's roster (sample: true) — liveness unmeasured on this run",
+      kind: "not_applicable",
     }
     rows.reviewer_recall_estimate = {
       unavailable: "no paid-reviewer sample in the newest findings file's roster (sample: true) — liveness unmeasured on this run",
+      kind: "not_applicable",
     }
   } else if (sameModelLiveness) {
     rows.citation_competence = {
@@ -749,41 +1225,286 @@ export function adherenceAdapter(ctx, { reportSourceHash, git } = {}) {
 }
 
 // The full set, so the gate does not have to know each adapter's name.
-export function collectReadings(ctx, mode, wants) {
+export function collectReadings(ctx, mode, wants, options = {}) {
   const readings = {}
+  const shouldCollect = typeof wants === "function" ? wants : function() { return true }
   const attempt = (label, fn) => {
     try {
+      // One adapter failing is that metric's `unavailable`, never the gate's exit 2.
       return fn()
     } catch (error) {
-      // One adapter failing is that metric's `unavailable`, never the gate's exit 2.
       return { unavailable: redact(`${label} threw: ${error.message}`) }
     }
   }
 
-  if (wants("line_coverage") || wants("branch_coverage")) {
+  if (shouldCollect("line_coverage") || shouldCollect("branch_coverage")) {
     const coverage = attempt("coverage adapter", () => coverageAdapter(ctx))
     readings.line_coverage = coverage.line ?? coverage
     readings.branch_coverage = coverage.branch ?? coverage
   }
-  if (wants("cyclomatic_max")) readings.cyclomatic_max = attempt("complexity adapter", () => complexityAdapter(ctx))
-  if (wants("module_lines_max")) readings.module_lines_max = attempt("module-size adapter", () => moduleSizeAdapter(ctx))
-  if (wants("security_findings")) readings.security_findings = attempt("security adapter", () => securityAdapter(ctx))
-  if (wants("boundary_violations")) readings.boundary_violations = attempt("boundaries adapter", () => boundariesAdapter(ctx))
-  if (wants("regression_suite")) readings.regression_suite = attempt("regression adapter", () => suiteAdapter(ctx, "regression"))
-  if (wants("e2e_suite")) readings.e2e_suite = attempt("e2e adapter", () => suiteAdapter(ctx, "e2e"))
-  if (wants("mutation_kill_ratio")) readings.mutation_kill_ratio = attempt("mutation adapter", () => mutationAdapter(ctx))
-  if (wants("redteam_quickcheck")) readings.redteam_quickcheck = attempt("redteam quickcheck adapter", () => redteamQuickcheckAdapter(ctx))
-  if (wants("authz_controls")) readings.authz_controls = attempt("authz controls adapter", () => authzControlsAdapter(ctx))
-  if (wants("dependency_cooldown")) readings.dependency_cooldown = attempt("dependency cooldown adapter", () => dependencyCooldownAdapter(ctx))
-  if (ADHERENCE_METRIC_NAMES.some((name) => wants(name))) {
-    // One window read produces all nine rows. If the adapter itself throws, every row
-    // becomes `unavailable` — never the gate's exit 2.
-    const adherence = attempt("adherence adapter", () => adherenceAdapter(ctx))
+  if (shouldCollect("cyclomatic_max")) readings.cyclomatic_max = attempt("complexity adapter", () => complexityAdapter(ctx))
+  if (shouldCollect("module_lines_max")) readings.module_lines_max = attempt("module-size adapter", () => moduleSizeAdapter(ctx))
+  if (shouldCollect("function_size_violations")) readings.function_size_violations = attempt("function-size adapter", () => functionSizeAdapter(ctx))
+  if (shouldCollect("security_findings")) readings.security_findings = attempt("security adapter", () => securityAdapter(ctx))
+  if (shouldCollect("boundary_violations")) readings.boundary_violations = attempt("boundaries adapter", () => boundariesAdapter(ctx))
+  if (shouldCollect("regression_suite")) readings.regression_suite = attempt("regression adapter", () => suiteAdapter(ctx, "regression"))
+  if (shouldCollect("e2e_suite")) readings.e2e_suite = attempt("e2e adapter", () => suiteAdapter(ctx, "e2e"))
+  if (shouldCollect("mutation_kill_ratio")) readings.mutation_kill_ratio = attempt("mutation adapter", () => mutationAdapter(ctx))
+  if (shouldCollect("redteam_quickcheck")) readings.redteam_quickcheck = attempt("redteam quickcheck adapter", () => redteamQuickcheckAdapter(ctx))
+  if (shouldCollect("authz_controls")) readings.authz_controls = attempt("authz controls adapter", () => authzControlsAdapter(ctx))
+  if (shouldCollect("eval_regressions")) readings.eval_regressions = attempt("eval regressions adapter", () => evalRegressionsAdapter(ctx))
+  if (shouldCollect("delivery_config")) readings.delivery_config = attempt("delivery config adapter", () => deliveryConfigAdapter(ctx))
+  if (shouldCollect("dependency_cooldown")) readings.dependency_cooldown = attempt("dependency cooldown adapter", () => dependencyCooldownAdapter(ctx))
+  if (shouldCollect("completion_gate")) readings.completion_gate = attempt("completion gate adapter", () => completionGateAdapter(ctx))
+  if (shouldCollect("memory_available")) readings.memory_available = attempt("memory availability adapter", () => memoryAvailableAdapter(ctx))
+  if (shouldCollect("prose_tells")) readings.prose_tells = attempt("prose tells adapter", () => proseTellsAdapter(ctx, options))
+  if (shouldCollect("narrating_comments")) readings.narrating_comments = attempt("narrating comments adapter", () => narratingCommentsAdapter(ctx, options))
+  if (shouldCollect("file_growth_delta")) readings.file_growth_delta = attempt("file growth adapter", () => fileGrowthDeltaAdapter(ctx, options))
+  if (shouldCollect("skill_lint")) readings.skill_lint = attempt("skill lint adapter", () => skillLintAdapter(ctx, options))
+  if (shouldCollect("bypass_findings")) readings.bypass_findings = attempt("bypass scan adapter", () => bypassFindingsAdapter(ctx, options))
+  if (shouldCollect("evidence_rung_min")) readings.evidence_rung_min = attempt("evidence rung adapter", () => evidenceRungMinAdapter(ctx, options))
+  if (ADHERENCE_METRIC_NAMES.some((name) => shouldCollect(name))) {
+    const adherence = attempt("adherence adapter", () => adherenceAdapter(ctx, options))
     if (adherence.unavailable && typeof adherence.unavailable === "string") {
-      for (const name of ADHERENCE_METRIC_NAMES) if (wants(name)) readings[name] = { unavailable: adherence.unavailable }
+      for (const name of ADHERENCE_METRIC_NAMES) if (shouldCollect(name)) readings[name] = { unavailable: adherence.unavailable }
     } else {
-      for (const [name, reading] of Object.entries(adherence)) if (wants(name)) readings[name] = reading
+      for (const [name, reading] of Object.entries(adherence)) if (shouldCollect(name)) readings[name] = reading
     }
   }
+  return readings
+}
+
+export async function collectReadingsAsync(ctx, mode, wants, options = {}) {
+  const readings = {}
+  const shouldCollect = typeof wants === "function" ? wants : function() { return true }
+  const attempt = async (label, fn) => {
+    try {
+      return await fn()
+    } catch (error) {
+      return { unavailable: redact(`${label} threw: ${error.message}`) }
+    }
+  }
+
+  const tasks = []
+
+  if (shouldCollect("line_coverage") || shouldCollect("branch_coverage")) {
+    tasks.push(
+      attempt("coverage adapter", () => coverageAdapter(ctx)).then((coverage) => {
+        readings.line_coverage = coverage.line ?? coverage
+        readings.branch_coverage = coverage.branch ?? coverage
+      }),
+    )
+  }
+
+  if (shouldCollect("cyclomatic_max")) {
+    tasks.push(
+      attempt("complexity adapter", async () => {
+        if (ctx.commands.complexity) return fromConfiguredCommandAsync(ctx, ctx.commands.complexity, "commands.complexity")
+        return complexityAdapter(ctx)
+      }).then((res) => { readings.cyclomatic_max = res }),
+    )
+  }
+
+  if (shouldCollect("module_lines_max")) {
+    tasks.push(
+      attempt("module-size adapter", async () => {
+        if (ctx.commands.module_size) return fromConfiguredCommandAsync(ctx, ctx.commands.module_size, "commands.module_size")
+        return moduleSizeAdapter(ctx)
+      }).then((res) => { readings.module_lines_max = res }),
+    )
+  }
+  if (shouldCollect("function_size_violations")) {
+    tasks.push(
+      attempt("function-size adapter", async () => {
+        if (ctx.commands.function_size) return fromConfiguredCommandAsync(ctx, ctx.commands.function_size, "commands.function_size")
+        return functionSizeAdapter(ctx)
+      }).then((res) => { readings.function_size_violations = res }),
+    )
+  }
+
+  if (shouldCollect("security_findings")) {
+    tasks.push(
+      attempt("security adapter", async () => {
+        if (ctx.commands.security) return fromConfiguredCommandAsync(ctx, ctx.commands.security, "commands.security")
+        return securityAdapter(ctx)
+      }).then((res) => { readings.security_findings = res }),
+    )
+  }
+
+  if (shouldCollect("boundary_violations")) {
+    tasks.push(
+      attempt("boundaries adapter", async () => {
+        if (ctx.commands.boundaries) return fromConfiguredCommandAsync(ctx, ctx.commands.boundaries, "commands.boundaries")
+        return boundariesAdapter(ctx)
+      }).then((res) => { readings.boundary_violations = res }),
+    )
+  }
+
+  if (shouldCollect("regression_suite")) {
+    tasks.push(
+      attempt("regression adapter", async () => {
+        const suite = ctx.suites["regression"] ?? {}
+        if (!suite.command) {
+          return { unavailable: "no regression suite declared — set suites.regression.command in agent-os/quality-thresholds.json", kind: "not_configured" }
+        }
+        return fromConfiguredCommandAsync(ctx, suite.command, "suites.regression.command", { countingFailures: true })
+      }).then((res) => { readings.regression_suite = res }),
+    )
+  }
+
+  if (shouldCollect("e2e_suite")) {
+    tasks.push(
+      attempt("e2e adapter", async () => {
+        const suite = ctx.suites["e2e"] ?? {}
+        if (!suite.command) {
+          return { unavailable: "no e2e suite declared — set suites.e2e.command in agent-os/quality-thresholds.json", kind: "not_configured" }
+        }
+        return fromConfiguredCommandAsync(ctx, suite.command, "suites.e2e.command", { countingFailures: true })
+      }).then((res) => { readings.e2e_suite = res }),
+    )
+  }
+
+  if (shouldCollect("mutation_kill_ratio")) {
+    tasks.push(
+      attempt("mutation adapter", () => mutationAdapter(ctx)).then((res) => { readings.mutation_kill_ratio = res }),
+    )
+  }
+
+  if (shouldCollect("redteam_quickcheck")) {
+    tasks.push(
+      attempt("redteam quickcheck adapter", async () => {
+        if (!ctx.commands.redteam) return { unavailable: "no commands.redteam declared — set it to the harness-redteam-scan --metric command", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.redteam, "commands.redteam")
+      }).then((res) => { readings.redteam_quickcheck = res }),
+    )
+  }
+
+  if (shouldCollect("authz_controls")) {
+    tasks.push(
+      attempt("authz controls adapter", async () => {
+        if (!ctx.commands.authz) return { unavailable: "no commands.authz declared — set it to the harness-security-contract --metric command", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.authz, "commands.authz")
+      }).then((res) => { readings.authz_controls = res }),
+    )
+  }
+  if (shouldCollect("eval_regressions")) {
+    tasks.push(
+      attempt("eval regressions adapter", async () => {
+        if (!ctx.commands.eval) return { unavailable: "no commands.eval declared — set it to the harness-eval-runner --regression --metric command", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.eval, "commands.eval")
+      }).then((res) => { readings.eval_regressions = res }),
+    )
+  }
+  if (shouldCollect("delivery_config")) {
+    tasks.push(
+      attempt("delivery config adapter", async () => {
+        if (!ctx.commands.delivery) return { unavailable: "no commands.delivery declared — set it to the harness-delivery-preflight --config-check --metric command", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.delivery, "commands.delivery")
+      }).then((res) => { readings.delivery_config = res }),
+    )
+  }
+
+  if (shouldCollect("dependency_cooldown")) {
+    tasks.push(
+      attempt("dependency cooldown adapter", async () => {
+        if (!ctx.commands.cooldown) return { unavailable: "no commands.cooldown declared — set it to the harness-dependency-cooldown --metric command", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.cooldown, "commands.cooldown")
+      }).then((res) => { readings.dependency_cooldown = res }),
+    )
+  }
+  if (shouldCollect("completion_gate")) {
+    tasks.push(
+      attempt("completion gate adapter", () => completionGateAdapter(ctx)).then((res) => { readings.completion_gate = res }),
+    )
+  }
+  if (shouldCollect("memory_available")) {
+    tasks.push(
+      attempt("memory availability adapter", () => memoryAvailableAdapter(ctx)).then((res) => { readings.memory_available = res }),
+    )
+  }
+
+  if (shouldCollect("prose_tells")) {
+    tasks.push(
+      attempt("prose tells adapter", async () => {
+        if (!ctx.commands.prose) return { unavailable: "no prose tells command declared — set commands.prose in agent-os/quality-thresholds.json", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.prose, "commands.prose", options)
+      }).then((res) => { readings.prose_tells = res }),
+    )
+  }
+
+  if (shouldCollect("narrating_comments")) {
+    tasks.push(
+      attempt("narrating comments adapter", async () => {
+        if (!ctx.commands.comments) return { unavailable: "no narrating comments command declared — set commands.comments in agent-os/quality-thresholds.json", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.comments, "commands.comments", options)
+      }).then((res) => { readings.narrating_comments = res }),
+    )
+  }
+
+  if (shouldCollect("file_growth_delta")) {
+    tasks.push(
+      attempt("file growth adapter", async () => {
+        if (!ctx.commands.file_growth) return { unavailable: "no file growth command declared — set commands.file_growth in agent-os/quality-thresholds.json", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.file_growth, "commands.file_growth", options)
+      }).then((res) => { readings.file_growth_delta = res }),
+    )
+  }
+  if (shouldCollect("skill_lint")) {
+    tasks.push(
+      attempt("skill lint adapter", async () => {
+        if (!ctx.commands.skill_lint) return { unavailable: "no skill_lint command declared — set commands.skill_lint in agent-os/quality-thresholds.json", kind: "not_configured" }
+        if (!ctx.projectCommands) return { unavailable: "commands.skill_lint is configured but project commands are disabled (--no-project-commands)" }
+        const runner = options.run ?? runProjectCommandAsync
+        const result = await runner(ctx.commands.skill_lint, ctx.root)
+        const exitCheck = evaluateScannerExitContract("commands.skill_lint", result, options)
+        if (!exitCheck.ok) return { unavailable: exitCheck.unavailable, kind: "unavailable" }
+        const data = safeJson(result.stdout)
+        if (data && typeof data === "object") {
+          if (data.status === "unavailable") {
+            return { unavailable: data.reason ?? "no skills directory", kind: "not_configured" }
+          }
+          const errorCount = Array.isArray(data.errors) ? data.errors.length : (data.ok ? 0 : 1)
+          return { value: errorCount, detail: redact(`commands.skill_lint (exit ${result.code}) — ${data.skillsChecked ?? 0} skills, ${errorCount} error(s)`) }
+        }
+        if (result.code === 0) {
+          const parsed = lastNumber(result.stdout)
+          if (parsed !== null) return { value: parsed, detail: redact(`commands.skill_lint (exit ${result.code})`) }
+        }
+        const reason = result.code !== 0
+          ? `commands.skill_lint failed (exit ${result.code}) without parseable JSON`
+          : "commands.skill_lint produced neither parseable JSON nor a count number"
+        return { unavailable: reason }
+      }).then((res) => { readings.skill_lint = res }),
+    )
+  }
+  if (shouldCollect("bypass_findings")) {
+    tasks.push(
+      attempt("bypass scan adapter", async () => {
+        if (!ctx.commands.bypass_scan) return { unavailable: "no bypass scan command declared — set commands.bypass_scan in agent-os/quality-thresholds.json", kind: "not_configured" }
+        return fromConfiguredCommandAsync(ctx, ctx.commands.bypass_scan, "commands.bypass_scan", { ...options, allowedExitCodes: [0] })
+      }).then((res) => { readings.bypass_findings = res }),
+    )
+  }
+
+
+  if (shouldCollect("evidence_rung_min")) {
+    tasks.push(
+      attempt("evidence rung adapter", () => evidenceRungMinAdapter(ctx, options)).then((res) => { readings.evidence_rung_min = res }),
+    )
+  }
+
+  if (ADHERENCE_METRIC_NAMES.some((name) => shouldCollect(name))) {
+    tasks.push(
+      attempt("adherence adapter", () => adherenceAdapter(ctx, options)).then((adherence) => {
+        if (adherence.unavailable && typeof adherence.unavailable === "string") {
+          for (const name of ADHERENCE_METRIC_NAMES) if (shouldCollect(name)) readings[name] = { unavailable: adherence.unavailable }
+        } else {
+          for (const [name, reading] of Object.entries(adherence)) if (shouldCollect(name)) readings[name] = reading
+        }
+      }),
+    )
+  }
+
+  await Promise.all(tasks)
   return readings
 }

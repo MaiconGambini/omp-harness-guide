@@ -1,3 +1,7 @@
+---
+name: harness-portability
+description: "Exports and imports global harness configuration across machines. Use when backing up, installing, or migrating the harness. Do NOT use for project-local harness setup (use harness-bootstrap)."
+---
 # Harness Portability
 
 Export and install the global OpenCode harness on another PC.

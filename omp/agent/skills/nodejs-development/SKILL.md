@@ -1,6 +1,6 @@
 ---
 name: nodejs-development
-description: "Node.js runtime principles, patterns, and production practices. Event loop, streams, worker threads, error handling, security, and performance. Teaches Node.js internals for writing robust server-side JavaScript/TypeScript."
+description: "Master Node.js runtime internals, streams, worker threads, and event loops. Use when building or debugging Node.js backends. Do NOT use for framework logic, preferring backend-dev-guidelines."
 risk: unknown
 source: community
 date_added: "2026-03-11"
@@ -205,98 +205,9 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 ---
 
-## 4. Streams
+## 4. Streams & Worker Threads
 
-### When to Use Streams
-
-```
-Use streams when:
-├── Processing large files (>100MB)
-├── Proxying data between services
-├── Real-time data transformation
-├── Backpressure is needed
-└── Memory efficiency matters
-
-Don't use streams when:
-├── Data fits in memory easily
-├── Simple request/response
-└── Complexity isn't justified
-```
-
-### Stream Types
-
-| Type          | Purpose                | Example                  |
-| ------------- | ---------------------- | ------------------------ |
-| **Readable**  | Source of data         | `fs.createReadStream()`  |
-| **Writable**  | Destination for data   | `fs.createWriteStream()` |
-| **Transform** | Modify data in transit | `zlib.createGzip()`      |
-| **Duplex**    | Both read and write    | `net.Socket`             |
-
-### Pipeline Pattern (Preferred)
-
-```ts
-import { pipeline } from "node:stream/promises";
-
-await pipeline(
-  fs.createReadStream("input.csv"),
-  csvParser(),
-  transformRows(),
-  fs.createWriteStream("output.json"),
-);
-```
-
-> Always use `pipeline()` over `.pipe()` — it handles errors and cleanup automatically.
-
----
-
-## 5. Worker Threads
-
-### When to Use
-
-```
-Worker Threads for:
-├── CPU-intensive computation (hashing, compression, parsing)
-├── Image/video processing
-├── Large JSON parsing
-├── Cryptographic operations
-└── Any work >50ms that would block event loop
-
-NOT for:
-├── I/O-bound work (use async I/O instead)
-├── Simple HTTP requests
-├── Database queries
-└── File reads (streams are better)
-```
-
-### Worker Thread Pattern
-
-```ts
-import {
-  Worker,
-  isMainThread,
-  parentPort,
-  workerData,
-} from "node:worker_threads";
-
-if (isMainThread) {
-  // Main thread — spawn worker
-  function runWorker(data: unknown): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(__filename, { workerData: data });
-      worker.on("message", resolve);
-      worker.on("error", reject);
-    });
-  }
-} else {
-  // Worker thread — do heavy computation
-  const result = heavyComputation(workerData);
-  parentPort?.postMessage(result);
-}
-```
-
-### Worker Pool
-
-For repeated CPU work, use a worker pool (e.g., `piscina` or `workerpool`) instead of spawning new workers per request.
+For stream pipelines, backpressure management, and worker thread CPU offloading patterns, see `references/streams-and-workers.md`.
 
 ---
 
@@ -440,79 +351,9 @@ app.get("/ready", async (req, res) => {
 });
 ```
 
----
+## 10. Production Configuration & Setup
 
-## 10. Production Configuration
-
-### Essential Settings
-
-```ts
-// Cluster mode for multi-core
-import cluster from "node:cluster";
-import { cpus } from "node:os";
-
-if (cluster.isPrimary) {
-  const numWorkers =
-    parseInt(process.env.WEB_CONCURRENCY || "") || cpus().length;
-  for (let i = 0; i < numWorkers; i++) {
-    cluster.fork();
-  }
-  cluster.on("exit", (worker) => {
-    logger.warn(`Worker ${worker.process.pid} died. Restarting...`);
-    cluster.fork();
-  });
-} else {
-  startServer();
-}
-```
-
-### Environment Validation
-
-```ts
-import { z } from "zod";
-
-const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "production", "test"]),
-  PORT: z.coerce.number().default(3000),
-  DATABASE_URL: z.string().url(),
-  JWT_SECRET: z.string().min(32),
-});
-
-export const env = envSchema.parse(process.env);
-```
-
-> Fail at startup, not at runtime.
-
----
-
-## 11. Package Management & Project Setup
-
-### Modern Defaults
-
-| Concern         | Tool                             |
-| --------------- | -------------------------------- |
-| Package manager | pnpm (fastest, strictest) or npm |
-| Linting         | ESLint + typescript-eslint       |
-| Formatting      | Prettier                         |
-| Type checking   | TypeScript strict mode           |
-| Testing         | Vitest or Jest                   |
-| Build           | tsup, esbuild, or tsc            |
-
-### package.json Essentials
-
-```json
-{
-  "type": "module",
-  "engines": { "node": ">=20" },
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsup src/server.ts",
-    "start": "node dist/server.js",
-    "lint": "eslint .",
-    "test": "vitest"
-  }
-}
-```
+For production runtime settings, memory caps, signals, and package management defaults, see `references/production-setup.md`.
 
 ---
 
@@ -543,6 +384,13 @@ export const env = envSchema.parse(process.env);
 
 ---
 
+## References
+
+- [references/streams-and-workers.md](references/streams-and-workers.md) — When implementing Node.js streams or CPU-intensive worker threads.
+- [references/production-setup.md](references/production-setup.md) — When configuring production runtime settings, memory limits, and package management defaults.
+
+---
+
 ## 13. Node.js Development Checklist
 
 Before deploying:
@@ -568,3 +416,4 @@ Before deploying:
 ## When to Use
 
 This skill is applicable to execute the workflow or actions described in the overview.
+

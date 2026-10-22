@@ -1,6 +1,6 @@
 ---
 name: backend-dev-guidelines
-description: "Opinionated backend development standards for Node.js + Express + TypeScript microservices. Covers layered architecture, BaseController pattern, dependency injection, Prisma repositories, Zod valid..."
+description: "Node.js, Express, and TypeScript microservice standards. Use when developing Node backend services with BaseController. Do NOT use for Python backends (use python-fastapi-development)."
 risk: unknown
 source: community
 date_added: "2026-02-27"

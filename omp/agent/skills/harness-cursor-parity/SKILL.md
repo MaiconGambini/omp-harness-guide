@@ -1,6 +1,6 @@
 ---
 name: harness-cursor-parity
-description: Use when keeping Cursor aligned with the OpenCode harness without duplicating the durable PREVC state state or exposing Cursor MCP secrets.
+description: "Aligns Cursor editor configuration with the OpenCode harness. Use when synchronizing rules, commands, and settings with Cursor. Do NOT use for Oh My Pi harness configuration (use harness-omp)."
 ---
 
 # Harness Cursor Parity

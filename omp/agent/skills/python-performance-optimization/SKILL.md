@@ -1,6 +1,6 @@
 ---
 name: python-performance-optimization
-description: "Profile and optimize Python code using cProfile, memory profilers, and performance best practices. Use when debugging slow Python code, optimizing bottlenecks, or improving application performance."
+description: "Profile and optimize Python code. Use when diagnosing slow functions or memory leaks. Do NOT use for async rewrites (use async-python-patterns)."
 risk: unknown
 source: community
 date_added: "2026-02-27"

@@ -1,6 +1,6 @@
 ---
 name: backend-architect
-description: Expert backend architect specializing in scalable API design, microservices architecture, and distributed systems.
+description: "Designs distributed backend architectures and APIs. Use when architecting microservices and distributed systems. Do NOT use for in-process module design (use codebase-design)."
 risk: unknown
 source: community
 date_added: '2026-02-27'

@@ -1,6 +1,6 @@
 ---
 name: setup-matt-pocock-skills
-description: Configure this repo for the engineering skills — set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.
+description: "Scaffold repository issue tracking and triage docs. Use when configuring a repo for engineering skills. Do NOT use for generating task tickets (use to-tickets)."
 disable-model-invocation: true
 ---
 

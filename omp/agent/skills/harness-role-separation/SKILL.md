@@ -1,6 +1,6 @@
 ---
 name: harness-role-separation
-description: Invoke for complex, subjective, UI-heavy, or self-review-prone tasks. Separates planner, generator, and evaluator roles. Produces sprint contract before any code.
+description: "Separate planner, generator, and evaluator roles. Use when handling complex, UI-heavy, or subjective tasks. Do NOT use for scheduling parallel lanes (use orchestrate)."
 ---
 
 # Harness Role Separation

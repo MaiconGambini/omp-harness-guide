@@ -1,6 +1,6 @@
 ---
 name: grill-with-docs
-description: A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go. Runs interactive (HITL) by default, or autonomous (AFK) when driven by a scheduler.
+description: "Conducts design interviews while generating ADRs and glossaries. Use when stress-testing designs requiring durable docs. Do NOT use for quick questioning without docs (use grilling)."
 ---
 
 Run a `/grilling` session, using the `/domain-modeling` skill.

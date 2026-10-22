@@ -1,6 +1,6 @@
 ---
 name: harness-context-layer
-description: Audit context layer readiness. When agent makes inconsistent architectural decisions or fails to understand the system, build ARCHITECTURE.md, PRODUCT.md, and RELIABILITY.md from codebase analysis.
+description: "Audits context readiness and synthesizes system docs from code. Use when an agent makes misinformed architecture choices. Do NOT use for token overhead audits (use harness-context-budget)."
 ---
 
 # Harness Context Layer

@@ -1,6 +1,6 @@
 ---
 name: harness-termination-check
-description: Generic three-layer Done check before claiming completion or setting any task to passing. Uses discovered verification and durable evidence.
+description: "Verify three-layer completion evidence before claiming done. Use when finishing tasks or passing deliverables. Do NOT use for interim runtime planning (use harness-runtime-feedback)."
 ---
 
 # Harness Termination Check

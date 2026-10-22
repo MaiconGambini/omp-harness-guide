@@ -1,6 +1,6 @@
 ---
 name: harness-capstone-audit
-description: Score harness maturity from 0-10 across entry, context, state, feedback, evaluation, runtime, benchmark, cleanup, and plugin readiness.
+description: "Scores harness maturity from 0-10 across operational layers. Use when auditing harness completeness or planning upgrades. Do NOT use for initial pre-bootstrap checks (use harness-initializer)."
 ---
 
 # Harness Capstone Audit

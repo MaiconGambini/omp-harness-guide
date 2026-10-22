@@ -4,38 +4,42 @@
 // PREVC is the ONLY agent that may write it; every transition goes through this CLI
 // so a failed or illegal transition can never leave a partial write (the state file
 // is replaced atomically and only after every precondition passed).
-//
 // Exit codes: 0 the transition/init/inspect succeeded · 2 refused — illegal edge,
 // missing/red/stale/invalid gate, invalid judge receipt, missing operator argument, or
-// an unreadable/invalid state file. A refusal NEVER writes — except one deliberate
-// case: attempting validate -> judge against a structurally valid RED full gate is
-// refused (exit 2) but persists `blocked` with the derived metric/value/threshold
-// blocker, so a red gate never leaves the lifecycle at `validate`.
+// an unreadable/invalid state file. A refusal NEVER writes: attempting validate -> judge
+// against a RED full gate is refused (exit 2) without writing state, advising the loop
+// transition to execute com o diagnóstico; attempting validate -> execute with attempts
+// >= maxAttempts is accepted without blocking, returning a fix-loop-exhausted advisory.
 //
+// Autofix loop (amendments R6.4, GS-04): the edge validate -> execute is accepted ONLY
+// when the newest full gate report is structurally valid and RED (kind "red"). When attempts
+// reach or exceed maxAttempts, the transition succeeds with an advisory.
+// Green, missing, stale, or malformed gates are refused (exit 2) without write.
 // The gate contract follows the measured-gate conventions (scripts/harness-quality-gate.mjs):
 // the NEWEST docs/harness/quality/*.json at --mode full is authoritative regardless of
 // verdict — an older green report cannot override a newer red one. To advance, the newest
 // full report must be credible (verdict pass, not unconfigured, non-empty rows, sourceHash
 // present — aligned with checkReportShape) and fresh (sourceHash == current tree hash).
 //
-// The judge receipt is the exact JSON emitted by the read-only judge agent (omp/overrides/
-// agents/judge.md) and persisted by PREVC under docs/harness/judge/<timestamp>.json:
+// The judge receipt is the exact JSON emitted by the read-only judge agent (agent/judge.md)
+// and persisted by PREVC under docs/harness/judge/<timestamp>.json:
 //   schemaVersion: 1, sourceHash, gateReport, tier, verdict: accept|revise|block,
-//   rubricScore, blockingCriteria[], evidencePaths[], judge: "judge", judgedAt.
-// The receipt must be a regular file under docs/harness/judge/ with EXACTLY those ten keys;
-// gateReport must name the exact newest full report (canonical path under
+//   rubricScore, blockingCriteria[], evidencePaths[], judge: "judge", judgedAt,
+//   completionPayload: { criteria[], evidence[], adversarial[] }.
+// The receipt must be a regular file under docs/harness/judge/ with EXACTLY those eleven
+// keys; gateReport must name the exact newest full report (canonical path under
 // docs/harness/quality/, existing regular file); evidencePaths are non-empty relative repo
 // paths that exist as regular files; verdict accept requires an empty blockingCriteria and
-// revise/block require at least one non-empty criterion. judge -> refine accepts only a
-// parseable receipt whose sourceHash equals the newest full green gate; refine ->
-// awaiting_confirmation requires verdict accept; revise/block route to
-// revision_requested/blocked; complete requires the operator confirm action AND an existing
-// docs/harness/session-handoff.md.
+// revise/block require at least one non-empty criterion. completionPayload is validated by
+// the canonical completion-gate validator. judge -> refine accepts only a parseable receipt
+// whose sourceHash equals the newest full green gate; refine -> awaiting_confirmation
+// requires verdict accept; revise/block route to revision_requested/blocked; complete
+// requires the operator confirm action AND an existing docs/harness/session-handoff.md.
 //
 // Relative paths resolve from --root (default: the current working directory).
-// Trace identity (T01 contract): every lifecycle write — init, a legal transition,
-// and the red-gate blocked persistence — appends a hash-chained phase event to the
-// shared stream docs/harness/traces/trace.jsonl BEFORE the atomic state replacement,
+// Trace identity (T01 contract): every lifecycle write — init and legal transitions —
+// appends a hash-chained phase event to the shared stream docs/harness/traces/trace.jsonl
+// BEFORE the atomic state replacement,
 // and the state records the stable trace/run/session identity plus the event id of
 // each transition in history, so the state file is an index into the stream. init
 // opens session -> run -> phase prepare; transitions append entity phase parented to
@@ -59,10 +63,17 @@ import {
   sourceHash,
 } from "./harness-quality-core.mjs"
 import { TRACE_PATH, appendEvent, newId, readTrace, validateId } from "./harness-trace.mjs"
+import { generateProgress } from "./harness-progress.mjs"
+import { validateCompletionPayload } from "./harness-completion-gate.mjs"
+import { DEFAULT_FIX_LOOP, readProjectProfile } from "./harness-project-profile.mjs"
 
 export const STATE_PATH = path.join("docs", "harness", "state", "prevc.json")
+export const ARCHIVE_DIR = path.join("docs", "harness", "state", "archive")
+export const PROGRESS_PATH = path.join("docs", "harness", "progress.md")
 export const JUDGE_DIR = path.join("docs", "harness", "judge")
 export const HANDOFF_PATH = path.join("docs", "harness", "session-handoff.md")
+export const AUTONOMY_POLICY_PATH = path.join("agent-os", "prevc-autonomy.json")
+export const REVIEW_DIR = path.join("docs", "harness", "review")
 export const SCHEMA_VERSION = 1
 export const PHASES = [
   "prepare",
@@ -78,7 +89,7 @@ export const PHASES = [
   "complete",
 ]
 export const RISKS = ["low", "medium", "high", "untrusted"]
-export const OPERATOR_ACTIONS = ["confirm", "revise", "abort"]
+export const OPERATOR_ACTIONS = ["confirm", "revise", "abort", "auto-confirm"]
 export const RECEIPT_VERDICTS = ["accept", "revise", "block"]
 export const RECEIPT_TIERS = ["auto", "sampling", "full"]
 
@@ -103,6 +114,7 @@ export const STATE_KEYS = [
 // Exact top-level key set of the judge receipt (the approved contract, agent/judge.md).
 export const RECEIPT_KEYS = [
   "blockingCriteria",
+  "completionPayload",
   "evidencePaths",
   "gateReport",
   "judge",
@@ -118,17 +130,20 @@ export const RECEIPT_KEYS = [
  * The legal edge table. Every other edge is refused with exit 2 and no write.
  * Aborted is the operator escape hatch from every non-terminal phase; complete and
  * aborted are terminal.
+ * validate -> execute is the autofix edge for a structurally valid red gate (advisory when attempts >= maxAttempts).
+ * judge -> validate and refine -> validate allow re-validation without dead-ending.
+ * blocked -> execute allows explicitly blocked runs to resume coding without a new plan approval.
  */
 export const TRANSITIONS = {
   prepare: ["awaiting_plan_approval", "blocked", "aborted"],
   awaiting_plan_approval: ["execute", "blocked", "aborted"],
   execute: ["validate", "blocked", "aborted"],
-  validate: ["judge", "blocked", "aborted"],
-  judge: ["refine", "revision_requested", "blocked", "aborted"],
-  refine: ["awaiting_confirmation", "revision_requested", "blocked", "aborted"],
+  validate: ["judge", "execute", "blocked", "aborted"],
+  judge: ["refine", "validate", "revision_requested", "blocked", "aborted"],
+  refine: ["awaiting_confirmation", "validate", "revision_requested", "blocked", "aborted"],
   awaiting_confirmation: ["complete", "revision_requested", "aborted"],
   revision_requested: ["execute", "awaiting_plan_approval", "blocked", "aborted"],
-  blocked: ["awaiting_plan_approval", "aborted"],
+  blocked: ["awaiting_plan_approval", "execute", "aborted"],
   aborted: [],
   complete: [],
 }
@@ -438,6 +453,99 @@ export function writeStateAtomic(root, state) {
   }
 }
 
+function validateInitArguments({ objective, spec, risk }) {
+  if (typeof objective !== "string" || objective.length === 0) return { ok: false, reason: "init requires --objective <text>" }
+  if (typeof spec !== "string" || spec.length === 0) return { ok: false, reason: "init requires --spec <path>" }
+  if (!RISKS.includes(risk)) return { ok: false, reason: `init requires --risk one of ${RISKS.join("|")}` }
+  return { ok: true }
+}
+
+function createInitialState(root, { objective, spec, risk, kind, data = {} }) {
+  const valid = validateInitArguments({ objective, spec, risk })
+  if (!valid.ok) return valid
+  const now = new Date().toISOString()
+  const traceId = newId("trace")
+  const runId = newId("run")
+  const sessionId = newId("ses")
+  const opened = openLifecycleTrace(root, { traceId, runId, sessionId, phase: "prepare", kind, now, data: { ...data, risk, objective } })
+  if (!opened.ok) return opened
+  return {
+    ok: true,
+    state: {
+      schemaVersion: SCHEMA_VERSION,
+      objective,
+      specPath: toPosix(spec),
+      phase: "prepare",
+      risk,
+      traceId,
+      runId,
+      sessionId,
+      gateSourceHash: null,
+      judgeReceiptPath: null,
+      operatorDecision: null,
+      blocker: null,
+      updatedAt: now,
+      history: [{ phase: "prepare", at: now, eventId: opened.eventId }],
+    },
+  }
+}
+
+function archiveState(root, previous) {
+  const directory = path.join(root, ARCHIVE_DIR)
+  try {
+    fs.mkdirSync(directory, { recursive: true })
+  } catch (error) {
+    return { ok: false, reason: `cannot prepare archive directory: ${error.message}` }
+  }
+  const archiveDirectory = safeRealDirectory(root, ARCHIVE_DIR, "archive")
+  if (!archiveDirectory.ok) return archiveDirectory
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-")
+  let suffix = 0
+  let filename
+  let target
+  do {
+    const extra = suffix === 0 ? "" : `-${suffix}`
+    filename = `prevc-${stamp}-${previous.phase}${extra}.json`
+    target = path.join(archiveDirectory.real, filename)
+    suffix += 1
+    try {
+      fs.lstatSync(target)
+    } catch (error) {
+      if (error.code === "ENOENT") break
+      return { ok: false, reason: `cannot inspect archive target: ${error.message}` }
+    }
+  } while (true)
+
+  if (resolveInsideRoot(root, target) === null) {
+    return { ok: false, reason: `archive target ${filename} resolves outside the repository — a symlink/junction escape is refused` }
+  }
+  const temporary = `${target}.tmp-${process.pid}`
+  let descriptor = null
+  try {
+    descriptor = fs.openSync(temporary, "wx")
+    fs.writeFileSync(descriptor, `${JSON.stringify(previous, null, 2)}\n`)
+    fs.closeSync(descriptor)
+    descriptor = null
+    fs.renameSync(temporary, target)
+  } catch (error) {
+    if (descriptor !== null) {
+      try {
+        fs.closeSync(descriptor)
+      } catch {
+        // best-effort descriptor cleanup
+      }
+    }
+    try {
+      fs.rmSync(temporary, { force: true })
+    } catch {
+      // best-effort temp cleanup
+    }
+    return { ok: false, reason: `cannot archive lifecycle state: ${error.message}` }
+  }
+  return { ok: true, relative: toPosix(path.relative(root, target)) }
+}
+
 export function initState({ root, objective, spec, risk }) {
   const acquired = acquireLock(root)
   if (!acquired.ok) return acquired
@@ -453,33 +561,42 @@ function initStateLocked({ root, objective, spec, risk }) {
   if (fs.existsSync(file)) {
     return { ok: false, reason: `lifecycle state already exists at ${STATE_PATH} — init refuses to overwrite it` }
   }
-  if (typeof objective !== "string" || objective.length === 0) return { ok: false, reason: "init requires --objective <text>" }
-  if (typeof spec !== "string" || spec.length === 0) return { ok: false, reason: "init requires --spec <path>" }
-  if (!RISKS.includes(risk)) return { ok: false, reason: `init requires --risk one of ${RISKS.join("|")}` }
-  const now = new Date().toISOString()
-  const traceId = newId("trace")
-  const runId = newId("run")
-  const sessionId = newId("ses")
-  const opened = openLifecycleTrace(root, { traceId, runId, sessionId, phase: "prepare", kind: "init", now, data: { risk, objective } })
-  if (!opened.ok) return opened
-  const state = {
-    schemaVersion: SCHEMA_VERSION,
-    objective,
-    specPath: toPosix(spec),
-    phase: "prepare",
-    risk,
-    traceId,
-    runId,
-    sessionId,
-    gateSourceHash: null,
-    judgeReceiptPath: null,
-    operatorDecision: null,
-    blocker: null,
-    updatedAt: now,
-    history: [{ phase: "prepare", at: now, eventId: opened.eventId }],
+  const created = createInitialState(root, { objective, spec, risk, kind: "init" })
+  if (!created.ok) return created
+  writeStateAtomic(root, created.state)
+  return created
+}
+
+export function rotateState({ root, objective = null, spec = null, risk = null }) {
+  const acquired = acquireLock(root)
+  if (!acquired.ok) return acquired
+  try {
+    return rotateStateLocked({ root, objective, spec, risk })
+  } finally {
+    releaseLock(acquired.lock, acquired.token)
   }
-  writeStateAtomic(root, state)
-  return { ok: true, state }
+}
+
+function rotateStateLocked({ root, objective, spec, risk }) {
+  const current = readState(root)
+  if (!current.ok) return current
+  const previous = current.state
+  if (!["aborted", "complete"].includes(previous.phase)) {
+    return { ok: false, reason: `rotate requires a terminal phase (aborted|complete); current phase is ${previous.phase}` }
+  }
+  const next = {
+    objective: objective ?? previous.objective,
+    spec: spec ?? previous.specPath,
+    risk: risk ?? previous.risk,
+  }
+  const valid = validateInitArguments(next)
+  if (!valid.ok) return { ...valid, reason: valid.reason.replace(/^init/, "rotate") }
+  const archived = archiveState(root, previous)
+  if (!archived.ok) return archived
+  const created = createInitialState(root, { ...next, kind: "rotate", data: { archived: archived.relative } })
+  if (!created.ok) return created
+  writeStateAtomic(root, created.state)
+  return { ...created, archive: archived.relative }
 }
 
 export function inspectState(root) {
@@ -495,7 +612,7 @@ export function latestFullGateReport(root) {
 }
 
 /** The report's rows must be an array of plain objects with a known status for the gate to read them. */
-export const ROW_STATUSES = ["pass", "fail", "observe", "unavailable"]
+export const ROW_STATUSES = ["pass", "fail", "observe", "unavailable", "not_configured", "not_applicable"]
 export function reportRowsValid(report) {
   return (
     Array.isArray(report.rows) &&
@@ -622,7 +739,7 @@ export function gateCheck(root, { git, notBefore } = {}) {
       kind: "red",
       rowsValid,
       reason: rowsValid
-        ? `gate report ${file} is ${report.verdict} at --mode full — a non-green gate cannot advance the lifecycle; fix the red rows and re-run the gate`
+        ? `gate report ${file} is ${report.verdict} at --mode full — sinal de loop: o judge espera gate verde; volte para execute com o diagnóstico abaixo, corrija e re-rode o gate`
         : `gate report ${file} is ${report.verdict} with malformed rows — it cannot be read to persist a blocker; re-run the gate`,
       report,
       currentHash: null,
@@ -666,7 +783,7 @@ export function gateCheck(root, { git, notBefore } = {}) {
  */
 export function gateBlockerText(root, { git } = {}) {
   const found = newestFullReportCandidate(root)
-  if (!found) return { ok: true, text: "blocked: no full-mode gate report found — run the gate at --mode full first" }
+  if (!found) return { ok: true, text: "sinal: no full-mode gate report found — run the gate at --mode full first" }
   if (found.malformed) {
     return { ok: false, reason: found.reason ?? `newest quality report ${found.file ?? "(unknown)"} is not readable JSON — its mode is unknowable; re-run the gate at --mode full` }
   }
@@ -676,20 +793,20 @@ export function gateBlockerText(root, { git } = {}) {
       return { ok: false, reason: `gate report ${found.file} is ${report.verdict} with malformed rows — cannot derive a blocker; re-run the gate at --mode full` }
     }
     const red = report.rows.filter((row) => row.status === "fail")
-    if (red.length === 0) return { ok: true, text: `blocked: gate verdict ${report.verdict} at --mode full (no red rows parsed)` }
+    if (red.length === 0) return { ok: true, text: `sinal: gate verdict ${report.verdict} at --mode full (no red rows parsed)` }
     const detail = red
       .map((row) => {
         const value = row.value === undefined ? "unavailable" : String(row.value)
         return `${row.metric}=${value} (needs ${row.direction === "min" ? ">=" : "<="} ${row.threshold})`
       })
       .join("; ")
-    return { ok: true, text: `blocked: gate red at --mode full: ${detail}` }
+    return { ok: true, text: `sinal: gate red at --mode full: ${detail}` }
   }
   const currentHash = sourceHash(root, { git: git ?? makeGit(root), fresh: true })
   if (currentHash !== null && report.sourceHash !== currentHash) {
-    return { ok: true, text: `blocked: gate report is stale (report sourceHash ${report.sourceHash}, tree ${currentHash}) — re-run the gate at --mode full` }
+    return { ok: true, text: `sinal: gate report is stale (report sourceHash ${report.sourceHash}, tree ${currentHash}) — re-run the gate at --mode full` }
   }
-  return { ok: true, text: "blocked: latest full gate is green but stale or unverifiable — re-run the gate at --mode full" }
+  return { ok: true, text: "sinal: latest full gate is green but stale or unverifiable — re-run the gate at --mode full" }
 }
 
 // ---------------------------------------------------------------------------
@@ -736,7 +853,7 @@ function regularFileInside(root, candidate, { expectUnder, label }) {
 }
 
 /**
- * The exact judge JSON contract (agent/judge.md): exactly ten keys, every
+ * The exact judge JSON contract (agent/judge.md): exactly eleven keys, every
  * field required; the receipt must be a regular file under docs/harness/judge/ and every
  * path inside it must be a real in-repo regular file.
  */
@@ -760,6 +877,24 @@ export function parseJudgeReceipt(root, receiptPath) {
   const keys = Object.keys(receipt).sort()
   if (keys.length !== RECEIPT_KEYS.length || !RECEIPT_KEYS.every((key) => keys.includes(key))) {
     problems.push(`exact key set required: ${RECEIPT_KEYS.join(",")}`)
+  }
+  const completion = validateCompletionPayload(receipt.completionPayload)
+  if (!completion.valid) problems.push(`completionPayload is invalid: ${completion.errors.join(",")}`)
+  if (completion.valid) {
+    const invalidEvidencePath = receipt.completionPayload.evidence.some((record) => {
+      const evidencePath = record?.path
+      const normalizedEvidencePath = typeof evidencePath === "string" ? evidencePath.replaceAll("\\", "/") : ""
+      const escapesRoot = normalizedEvidencePath === ".." || normalizedEvidencePath.startsWith("../")
+      return (
+        typeof evidencePath !== "string" ||
+        evidencePath.length === 0 ||
+        path.isAbsolute(evidencePath) ||
+        path.posix.isAbsolute(evidencePath) ||
+        path.win32.isAbsolute(evidencePath) ||
+        escapesRoot
+      )
+    })
+    if (invalidEvidencePath) problems.push("completionPayload evidence paths must be non-empty relative paths")
   }
   if (receipt.schemaVersion !== 1) problems.push(`schemaVersion must be 1 (got ${JSON.stringify(receipt.schemaVersion)})`)
   if (typeof receipt.sourceHash !== "string" || receipt.sourceHash.length === 0) problems.push("sourceHash must be a non-empty string")
@@ -806,6 +941,29 @@ export function parseJudgeReceipt(root, receiptPath) {
   return { ok: true, receipt, resolved: located.real, relative: toPosix(path.relative(root, located.real)) }
 }
 
+/**
+ * Reads review files from docs/harness/review/, returning regular files with metadata.
+ */
+export function listReviewFiles(root) {
+  const reviewDir = path.join(root, REVIEW_DIR)
+  let reviewFiles = []
+  try {
+    if (fs.existsSync(reviewDir) && fs.statSync(reviewDir).isDirectory()) {
+      reviewFiles = fs
+        .readdirSync(reviewDir)
+        .map((name) => {
+          const fullPath = path.join(reviewDir, name)
+          const stat = fs.statSync(fullPath)
+          return { name, fullPath, mtimeMs: stat.mtimeMs, isFile: stat.isFile() }
+        })
+        .filter((file) => file.isFile)
+    }
+  } catch {
+    // failed directory scan leaves reviewFiles empty
+  }
+  return reviewFiles
+}
+
 // ---------------------------------------------------------------------------
 // trace identity binding (T01 contract)
 
@@ -818,6 +976,7 @@ function openLifecycleTrace(root, { traceId, runId, sessionId, phase, kind, now,
       reason: `trace stream ${TRACE_PATH.replace(/\\/g, "/")} is corrupt (${corrupt.errors.length} bad line(s)) — run 'node scripts/harness-trace.mjs --verify' before lifecycle writes`,
     }
   }
+
   const base = { trace_id: traceId, run_id: runId, session_id: sessionId, ts: now }
   const session = appendEvent(root, JSON.stringify({ ...base, entity: { type: "session", id: sessionId }, parent: null, kind: "start" }))
   if (!session.ok) return session
@@ -866,6 +1025,48 @@ function bindLegacyState(root, state, { now }) {
 }
 
 // ---------------------------------------------------------------------------
+/**
+ * Derives the number of autofix attempts from state history.
+ * Counts transitions validate -> execute since the last entry into execute whose previous phase was awaiting_plan_approval.
+ */
+export function countAutofixAttempts(history) {
+  if (!Array.isArray(history) || history.length < 2) return 0
+
+  let lastExecuteFromApprovalIdx = -1
+  for (let i = 1; i < history.length; i++) {
+    if (history[i]?.phase === "execute" && history[i - 1]?.phase === "awaiting_plan_approval") {
+      lastExecuteFromApprovalIdx = i
+    }
+  }
+
+  const startIdx = lastExecuteFromApprovalIdx !== -1 ? lastExecuteFromApprovalIdx : 0
+  let attempts = 0
+  for (let i = startIdx + 1; i < history.length; i++) {
+    if (history[i]?.phase === "execute" && history[i - 1]?.phase === "validate") {
+      attempts++
+    }
+  }
+  return attempts
+}
+
+/**
+ * Resolves max fix attempts from agent-os/project-profile.json (fixLoop.maxAttempts)
+ * or DEFAULT_FIX_LOOP.maxAttempts, clamped to 1..10.
+ */
+export function resolveMaxFixAttempts(root) {
+  let configured = null
+  try {
+    const res = readProjectProfile(root)
+    if (res && res.ok && res.profile?.fixLoop && typeof res.profile.fixLoop.maxAttempts === "number") {
+      configured = res.profile.fixLoop.maxAttempts
+    }
+  } catch {
+    configured = null
+  }
+  const raw = configured ?? DEFAULT_FIX_LOOP?.maxAttempts ?? 3
+  return Math.max(1, Math.min(10, Math.floor(raw)))
+}
+
 // transitions
 
 function toPosix(value) {
@@ -895,7 +1096,7 @@ function nextState(state, { phase, gateSourceHash, judgeReceiptPath, operatorDec
 /**
  * Transition the lifecycle. Every precondition is validated BEFORE any write, and the
  * state file is replaced atomically only on success — a refused transition (ok: false)
- * leaves the file byte-identical, except the one deliberate red-gate case below.
+ * leaves the file byte-identical; gate failures and stale gates are refused without mutation.
  */
 export function transitionState({ root, to, judgeReceipt = null, operatorAction = null, blocker = null, git }) {
   const acquired = acquireLock(root)
@@ -912,7 +1113,7 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
   if (!current.ok) return current
   const { state } = current
   const from = state.phase
-
+  let advisory = null
   if (typeof to !== "string" || !PHASES.includes(to)) {
     return { ok: false, reason: `unknown phase ${JSON.stringify(to)} — one of ${PHASES.join("|")}` }
   }
@@ -928,13 +1129,16 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
     if (!consumesAction) {
       return { ok: false, reason: `--operator-action ${operatorAction} is not consumed by ${from} -> ${to}` }
     }
+    if (operatorAction === "auto-confirm" && !(from === "awaiting_confirmation" && to === "complete")) {
+      return { ok: false, reason: `--operator-action auto-confirm is not consumed by ${from} -> ${to}` }
+    }
   }
 
   // -- receipt-gated edges: judge exits route by the receipt verdict. The receipt is
   // validated BEFORE the gate so a missing/invalid receipt is named, not masked by a
   // gate failure; the hash and report-identity tie-ins come after.
   let receipt = null
-  if (from === "judge" && to !== "aborted") {
+  if (from === "judge" && to !== "aborted" && to !== "validate") {
     const parsed = parseJudgeReceipt(root, judgeReceipt)
     if (!parsed.ok) return parsed
     const expected = { refine: "accept", revision_requested: "revise", blocked: "block" }[to]
@@ -945,7 +1149,7 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
   }
 
   // -- refine exits re-parse the receipt recorded at judge entry.
-  if (from === "refine" && to !== "aborted") {
+  if (from === "refine" && to !== "aborted" && to !== "validate") {
     if (state.judgeReceiptPath === null) {
       return { ok: false, reason: "refine exit requires a recorded judge receipt (state.judgeReceiptPath is null)" }
     }
@@ -957,53 +1161,65 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
     }
     receipt = parsed
   }
+  // -- autofix edge: validate -> execute (amendment R6.4, gate as signal revision GS-04)
+  // Accepted ONLY when gateCheck finds the newest full report structurally valid and RED (kind red);
+  // green, missing, stale or malformed -> refuse exit 2 without write.
+  // When attempts >= maxAttempts, the transition is accepted without blocking, returning advisory.
+  let gate = null
+  if (from === "validate" && to === "execute") {
+    gate = gateCheck(root, { git })
+    if (gate.ok) {
+      return { ok: false, reason: "gate report is green — autofix edge validate -> execute requires a red gate" }
+    }
+    if (gate.kind !== "red" || gate.rowsValid === false) {
+      return { ok: false, reason: gate.reason ?? "gate report must be structurally valid and red to advance validate -> execute" }
+    }
+    const currentHash = sourceHash(root, { git: git ?? makeGit(root), fresh: true })
+    if (currentHash !== null && gate.report?.sourceHash && gate.report.sourceHash !== currentHash) {
+      return {
+        ok: false,
+        kind: "stale",
+        reason: `gate report is stale: report sourceHash ${gate.report.sourceHash} does not match current tree (${currentHash})`,
+      }
+    }
+    const attempts = countAutofixAttempts(state.history)
+    const maxAttempts = resolveMaxFixAttempts(root)
+    if (attempts >= maxAttempts) {
+      const derived = gateBlockerText(root, { git })
+      const metricDetail = derived.ok ? `: ${derived.text}` : ""
+      advisory = `fix-loop-exhausted (${attempts}/${maxAttempts})${metricDetail}`
+    }
+  }
 
   // -- the gate, when the edge demands it: green AND fresh (sourceHash == current tree).
-  // Gate-gated edges: validate -> judge, every judge exit except operator abort, and
-  // every refine exit except operator abort.
+  // Gate-gated edges: validate -> judge, every judge exit except operator abort and validate,
+  // and every refine exit except operator abort and validate.
   const gateRequired =
     (from === "validate" && to === "judge") ||
-    (from === "judge" && to !== "aborted") ||
-    (from === "refine" && to !== "aborted")
+    (from === "judge" && to !== "aborted" && to !== "validate") ||
+    (from === "refine" && to !== "aborted" && to !== "validate")
   // judge/refine exits bind the gate to the CURRENT validate cycle: a report from a
   // previous cycle (even hash-matching) cannot vouch for this run's judging.
   const validateEntries = state.history.filter((entry) => entry.phase === "validate")
   const notBefore = from === "validate" ? undefined : validateEntries.length > 0 ? Date.parse(validateEntries[validateEntries.length - 1].at) : undefined
-  let gate = null
   if (gateRequired) {
     gate = gateCheck(root, { git, notBefore })
     if (!gate.ok) {
-      // A structurally valid RED gate must never leave the lifecycle at `validate`: the
-      // Judge advance is refused (exit 2) but `blocked` is persisted automatically with
-      // the derived metric/value/threshold blocker. Missing, stale, invalid, and
-      // malformed-row gates fail closed WITHOUT mutation.
-      if (from === "validate" && to === "judge" && gate.kind === "red" && gate.rowsValid !== false) {
+      if (from === "judge" && to !== "aborted" && to !== "validate" && gate.kind === "stale") {
+        return {
+          ok: false,
+          kind: "stale",
+          reason: gate.reason || "gate report is stale — re-run the gate at --mode full",
+        }
+      }
+      if (from === "validate" && to === "judge" && gate.kind === "red") {
         const derived = gateBlockerText(root, { git })
-        if (!derived.ok) return derived
-        const now = new Date().toISOString()
-        const bound = bindLegacyState(root, state, { now })
-        if (!bound.ok) return bound
-        const eventId = newId("evt")
-        const appended = appendPhaseEvent(root, {
-          state: bound.bound,
-          from,
-          to: "blocked",
-          eventId,
-          now,
-          data: { from, to: "blocked", gateSourceHash: bound.bound.gateSourceHash, judgeReceiptPath: bound.bound.judgeReceiptPath, operatorDecision: bound.bound.operatorDecision, blocker: derived.text },
-        })
-        if (!appended.ok) return appended
-        const next = nextState(bound.bound, {
-          phase: "blocked",
-          gateSourceHash: state.gateSourceHash,
-          judgeReceiptPath: state.judgeReceiptPath,
-          operatorDecision: state.operatorDecision,
-          blocker: derived.text,
-          eventId,
-          now,
-        })
-        writeStateAtomic(root, next)
-        return { ok: false, reason: `${gate.reason} — refusing judge advancement; phase persisted as blocked`, persisted: "blocked" }
+        const detail = derived.ok ? `: ${derived.text}` : ""
+        return {
+          ok: false,
+          kind: "red",
+          reason: `${gate.reason}${detail} — loop: rode transition --to execute com o diagnóstico`,
+        }
       }
       return gate
     }
@@ -1019,7 +1235,7 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
     if (state.gateSourceHash !== gate.report.sourceHash) {
       return {
         ok: false,
-        reason: `gate changed since judge entry (state gateSourceHash ${state.gateSourceHash}, newest gate ${gate.report.sourceHash}) — revalidate at validate -> judge before judging`,
+        reason: `sinal: gate changed since judge entry (state gateSourceHash ${state.gateSourceHash}, newest gate ${gate.report.sourceHash}) — re-run the gate at --mode full`,
       }
     }
     const timeCheck = validateJudgedAt(receipt.receipt, state)
@@ -1034,6 +1250,29 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
       return {
         ok: false,
         reason: `receipt gateReport ${receipt.receipt.gateReport} does not match the newest full gate report ${toPosix(gate.file)}`,
+      }
+    }
+    if (from === "judge" && to === "refine" && receipt.receipt.verdict === "accept" && (receipt.receipt.tier === "full" || state.risk === "high")) {
+      const reviewFiles = listReviewFiles(root)
+      const hasApprovedRedTeamReview = reviewFiles.some((file) => {
+        const reviewContent = readTextIfExists(file.fullPath) ?? ""
+        const sourceHashMatches = [...reviewContent.matchAll(/^sourceHash:\s*(.*)$/gm)]
+        const hasHash = sourceHashMatches.some((m) => m[1].trim() === gate.report.sourceHash)
+        const redTeamMatches = [...reviewContent.matchAll(/^Red-team:\s*(\d+)\s+tentativas/gm)]
+        const hasAttempts = redTeamMatches.some((m) => {
+          const n = parseInt(m[1], 10)
+          return Number.isFinite(n) && n >= 3
+        })
+        const verdictMatches = [...reviewContent.matchAll(/^Verdict:\s*(.*)$/gm)]
+        const hasApprove = verdictMatches.length > 0 && verdictMatches.every((m) => m[1].trim() === "APPROVE")
+        return hasHash && hasAttempts && hasApprove
+      })
+
+      if (!hasApprovedRedTeamReview) {
+        return {
+          ok: false,
+          reason: `tier full requires an approved red-team review bound to sourceHash ${gate.report.sourceHash}`,
+        }
       }
     }
   }
@@ -1061,7 +1300,112 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
     return { ok: false, reason: "transition to aborted requires --operator-action abort" }
   }
   if (to === "complete") {
-    if (operatorAction !== "confirm") return { ok: false, reason: "complete requires --operator-action confirm" }
+    if (operatorAction !== "confirm" && operatorAction !== "auto-confirm") {
+      return { ok: false, reason: "complete requires --operator-action confirm or auto-confirm" }
+    }
+    if (operatorAction === "auto-confirm") {
+      const locatedPolicy = regularFileInside(root, AUTONOMY_POLICY_PATH, { label: "autonomy policy" })
+      if (!locatedPolicy.ok) {
+        return { ok: false, reason: `auto-confirm requires autonomy policy file ${AUTONOMY_POLICY_PATH.replace(/\\/g, "/")}: ${locatedPolicy.reason}` }
+      }
+      let policy
+      try {
+        const text = readTextIfExists(locatedPolicy.real)
+        policy = JSON.parse(text)
+      } catch (error) {
+        return { ok: false, reason: `autonomy policy ${AUTONOMY_POLICY_PATH.replace(/\\/g, "/")} is not valid JSON (${error.message})` }
+      }
+      if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
+        return { ok: false, reason: `autonomy policy ${AUTONOMY_POLICY_PATH.replace(/\\/g, "/")} must be a JSON object` }
+      }
+      const policyKeys = Object.keys(policy).sort()
+      const expectedKeys = ["autoConfirm", "maxRevisionCycles", "schemaVersion"]
+      if (policyKeys.length !== expectedKeys.length || !expectedKeys.every((key) => policyKeys.includes(key))) {
+        return { ok: false, reason: `autonomy policy ${AUTONOMY_POLICY_PATH.replace(/\\/g, "/")} has invalid keys: exact keys {${expectedKeys.join(", ")}} required` }
+      }
+      if (policy.schemaVersion !== 1) {
+        return { ok: false, reason: `autonomy policy schemaVersion must be 1 (found ${policy.schemaVersion})` }
+      }
+      if (typeof policy.autoConfirm !== "boolean" || policy.autoConfirm !== true) {
+        return { ok: false, reason: `auto-confirm is disabled by policy (autoConfirm: ${policy.autoConfirm})` }
+      }
+      if (
+        typeof policy.maxRevisionCycles !== "number" ||
+        !Number.isInteger(policy.maxRevisionCycles) ||
+        policy.maxRevisionCycles < 0 ||
+        policy.maxRevisionCycles > 10
+      ) {
+        return { ok: false, reason: "autonomy policy maxRevisionCycles must be an integer between 0 and 10" }
+      }
+      const revisionCount = state.history.filter((entry) => entry.phase === "revision_requested").length
+      if (revisionCount > policy.maxRevisionCycles) {
+        return { ok: false, reason: "revision budget exhausted, operator required" }
+      }
+      if (state.judgeReceiptPath === null) {
+        return { ok: false, reason: "auto-confirm requires a recorded judge receipt (state.judgeReceiptPath is null)" }
+      }
+      const parsedReceipt = parseJudgeReceipt(root, state.judgeReceiptPath)
+      if (!parsedReceipt.ok) {
+        return { ok: false, reason: `recorded judge receipt is no longer valid: ${parsedReceipt.reason}` }
+      }
+      if (parsedReceipt.receipt.verdict !== "accept") {
+        return { ok: false, reason: `judge receipt verdict is ${parsedReceipt.receipt.verdict}; auto-confirm requires accept` }
+      }
+      if (!Array.isArray(parsedReceipt.receipt.blockingCriteria) || parsedReceipt.receipt.blockingCriteria.length > 0) {
+        return { ok: false, reason: "judge receipt has non-empty blockingCriteria; auto-confirm requires empty blockingCriteria" }
+      }
+      const validateEntries = state.history.filter((entry) => entry.phase === "validate")
+      const notBefore = validateEntries.length > 0 ? Date.parse(validateEntries[validateEntries.length - 1].at) : undefined
+      const gate = gateCheck(root, { git, notBefore })
+      if (!gate.ok) {
+        return gate
+      }
+      if (parsedReceipt.receipt.sourceHash !== gate.report.sourceHash) {
+        return {
+          ok: false,
+          reason: `receipt sourceHash ${parsedReceipt.receipt.sourceHash} does not match the latest full green gate (${gate.report.sourceHash})`,
+        }
+      }
+      if (state.gateSourceHash !== gate.report.sourceHash) {
+        return {
+          ok: false,
+          reason: `gate changed since judge entry (state gateSourceHash ${state.gateSourceHash}, newest gate ${gate.report.sourceHash}) — re-run the gate at --mode full`,
+        }
+      }
+      if (toPosix(parsedReceipt.receipt.gateReport) !== toPosix(gate.file)) {
+        return {
+          ok: false,
+          reason: `receipt gateReport ${parsedReceipt.receipt.gateReport} does not match the newest full gate report ${toPosix(gate.file)}`,
+        }
+      }
+      const reviewFiles = listReviewFiles(root).filter((file) => /\.md$/i.test(file.name))
+      if (reviewFiles.length === 0) {
+        return { ok: false, reason: "auto-confirm requires an approving review in docs/harness/review/ (no review files found)" }
+      }
+      const latestValidateAt = validateEntries.length > 0 ? Date.parse(validateEntries[validateEntries.length - 1].at) : NaN
+      if (!Number.isFinite(latestValidateAt)) {
+        return { ok: false, reason: "auto-confirm requires a validate cycle in state history" }
+      }
+      const freshReviews = reviewFiles.filter((file) => file.mtimeMs >= latestValidateAt)
+      if (freshReviews.length === 0) {
+        return {
+          ok: false,
+          reason: "auto-confirm requires at least one review in docs/harness/review/ written after the latest validate cycle",
+        }
+      }
+      for (const file of freshReviews) {
+        const reviewContent = readTextIfExists(file.fullPath) ?? ""
+        const verdictLines = [...reviewContent.matchAll(/^Verdict:\s*(.*)$/gm)]
+        if (verdictLines.length === 0) {
+          return { ok: false, reason: `review ${file.name} does not carry an anchored "Verdict: APPROVE" line` }
+        }
+        for (const match of verdictLines) {
+          if (match[1].trim() !== "APPROVE") {
+            return { ok: false, reason: `review ${file.name} has a Verdict line other than APPROVE (${match[1].trim()})` }
+          }
+        }
+      }
+    }
     const located = regularFileInside(root, HANDOFF_PATH, { label: "handoff" })
     if (!located.ok) {
       return { ok: false, reason: `complete requires a regular in-repo ${HANDOFF_PATH}: ${located.reason}` }
@@ -1086,8 +1430,8 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
 
   // -- build the next state and bind the trace. The phase event is appended BEFORE
   // the atomic state replacement, so a refused append (corrupt stream, caps) can
-  // never leave a moved phase without its trace record; the state write itself is
-  // the last step and nothing after it can fail.
+  // never leave a moved phase without its trace record. The state write is
+  // authoritative; the derived progress refresh below is best-effort.
   const now = new Date().toISOString()
   const bound = bindLegacyState(root, state, { now })
   if (!bound.ok) return bound
@@ -1115,7 +1459,26 @@ function transitionStateLocked({ root, to, judgeReceipt = null, operatorAction =
     now,
   })
   writeStateAtomic(root, next)
-  return { ok: true, state: next, from, to, trace: { trace_id: bound.bound.traceId, run_id: bound.bound.runId, event_id: eventId } }
+  let progress = { ok: true }
+  if (!fs.existsSync(path.join(root, PROGRESS_PATH))) {
+    progress = { ok: false, reason: `progress refresh skipped: no existing ${PROGRESS_PATH}` }
+  } else {
+    try {
+      const generated = generateProgress(root, { write: true })
+      progress = { ok: true, path: generated.path }
+    } catch (error) {
+      progress = { ok: false, reason: error instanceof Error ? error.message : String(error) }
+    }
+  }
+  return {
+    ok: true,
+    state: next,
+    from,
+    to,
+    progress,
+    trace: { trace_id: bound.bound.traceId, run_id: bound.bound.runId, event_id: eventId },
+    ...(advisory ? { advisory } : {}),
+  }
 }
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/
@@ -1151,7 +1514,7 @@ export function validateJudgedAt(receipt, state, { now = Date.now(), skewMs = FU
 // ---------------------------------------------------------------------------
 // CLI
 
-export function runCli(argv) {
+export function runCli(argv, { git } = {}) {
   const take = (name) => {
     const index = argv.indexOf(name)
     return index !== -1 && index + 1 < argv.length && !argv[index + 1].startsWith("--") ? argv[index + 1] : null
@@ -1172,6 +1535,8 @@ export function runCli(argv) {
   let result
   if (command === "init") {
     result = initState({ root: options.root, objective: options.objective, spec: options.spec, risk: options.risk })
+  } else if (command === "rotate") {
+    result = rotateState({ root: options.root, objective: options.objective, spec: options.spec, risk: options.risk })
   } else if (command === "transition") {
     result = transitionState({
       root: options.root,
@@ -1179,18 +1544,26 @@ export function runCli(argv) {
       judgeReceipt: options.judgeReceipt,
       operatorAction: options.operatorAction,
       blocker: options.blocker,
+      git,
     })
   } else if (command === "inspect") {
     result = inspectState(options.root)
   } else {
-    result = { ok: false, reason: `unknown command ${JSON.stringify(command)} — use init|transition|inspect` }
+    result = { ok: false, reason: `unknown command ${JSON.stringify(command)} — use init|rotate|transition|inspect` }
   }
-
   if (result.ok) {
     if (command === "inspect") {
       process.stdout.write(`${JSON.stringify(result.state, null, 2)}\n`)
     } else if (command === "transition") {
       process.stdout.write(`prevc: ${result.from} -> ${result.to} (${STATE_PATH})\n`)
+      if (result.advisory) {
+        process.stdout.write(`prevc-state: advisory ${result.advisory}\n`)
+      }
+      if (result.progress && !result.progress.ok) {
+        process.stderr.write(`prevc-state: accepted transition but progress refresh failed: ${result.progress.reason}\n`)
+      }
+    } else if (command === "rotate") {
+      process.stdout.write(`prevc: archived ${result.archive} and initialized phase prepare (${STATE_PATH})\n`)
     } else {
       process.stdout.write(`prevc: initialized phase prepare (${STATE_PATH})\n`)
     }

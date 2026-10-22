@@ -8,7 +8,7 @@ description: >-
   fit", "draw the service/data flow", "identify system bottlenecks", "plan
   reliability for workers and background jobs", "explain load balancer and
   database tradeoffs", or "produce architecture diagrams".
-model: "@research"
+model: "@recon"
 tools: read, grep, glob
 spawns: ""
 ---

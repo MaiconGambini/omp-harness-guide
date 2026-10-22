@@ -1,6 +1,6 @@
 ---
 name: improve-codebase-architecture
-description: Identify evidence-backed architectural deepening opportunities in code that changes frequently or is hard to test, then route a selected improvement through PREVC.
+description: "Identify architectural deepening opportunities in complex code. Use when refactoring coupled code or improving seams. Do NOT use for greenfield domain modeling (use domain-modeling)."
 disable-model-invocation: true
 ---
 

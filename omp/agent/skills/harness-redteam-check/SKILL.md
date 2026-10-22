@@ -1,50 +1,55 @@
 ---
 name: harness-redteam-check
-description: Bounded mandatory adversarial check (R1): deterministic diff scan plus operator-approved security review. Run on every reconciled lane diff before the gate/commit; escalate only when the scan fires or the risk tier is sampling/full. Authorized, defensive, own-repo only — deep active exploitation is never part of this loop.
+description: "Run bounded adversarial scans on reconciled diffs. Use when verifying lane diffs before gates or commits. Do NOT use for full harness secret audits (use harness-security-scan)."
 ---
 
-# Harness Red-Team Check (bounded, R1)
+# Harness red-team check
 
-Every task carries a lightweight adversarial check of its reconciled diff. The ceremony is
-bounded: the deterministic scan is ≤ 2 minutes, and the whole red-team step for a
-simple/medium task stays under 10 minutes wall-clock. Deep active exploitation remains a
-separate, explicitly authorized activity and NEVER enters this loop.
+Every reconciled lane runs one bounded adversarial check against that lane's changed files or
+explicit diff. The runner owns a 120-second scan deadline. The complete red-team ceremony for a
+simple or medium task has a 10-minute wall-clock budget. Deep active exploitation is not part of
+this loop.
 
 ## Procedure
 
-1. **Scan the reconciled diff** with the deterministic quickcheck:
-   `node scripts/harness-redteam-scan.mjs --metric`
-   (or `node ~/.omp/agent/scripts/harness-redteam-scan.mjs --metric` on OMP; pass
-   `--target <diff-file|dir>` when the lane is not in a git repo).
-2. **Read the metric contract**: the LAST line is the FAIL count. `0` = clean.
-   `status: unavailable` (no number) = named gap — the scan could not run, which is never
-   a green.
-3. **Route by findings and tier**:
-   - Tier `auto` + FAIL count 0 → done. No reviewer dispatch. Total ceremony must fit the
-     10-minute budget.
-   - FAIL count > 0 → every finding is a real, typed issue class (secrets,
-     parent-directory traversal, injection sinks, dangerous commands). Fix the diff,
-     re-scan until 0.
-   - Tier `sampling`/`full` (risk router) OR scan findings that survive fixing → request
-     operator-approved security review over the sampled/full diff (read-only,
-     authorized, defensive review of the operator's own repo).
-4. **Never weaken the contract**: an unreadable target, a vanished file, or a failed scan
-   is reported as findings/unavailable — a partial scan never reads as clean.
-5. **Record**: scan output (or the named gap) is evidence in the lane envelope; findings
-   escalate to the findings manifest when a review ran.
+1. Identify the changed files or explicit diff for one reconciled lane. Do not pass the whole
+   repository when a lane target is available.
+2. Call the bounded runner:
+
+   ```text
+   node scripts/harness-redteam-runner.mjs --lane-target <changed-files-or-diff> --deadline-ms 120000 --json
+   ```
+
+   On OMP, use the installed runner path. The runner delegates detection to
+   `harness-redteam-scan.mjs`, reports `result`, `elapsedMs`, `scannedScope`, and findings, and
+   never dispatches an agent.
+3. Branch on the typed result:
+   - `pass`: at tier `auto`, finish the check without a reviewer. At tier `sampling` or `full`,
+     escalate once to the read-only `security-analyst` for the reconciled lane. A wave may use one
+     aggregated review instead. Never dispatch once per file.
+   - `fail`: block lane reconciliation. Fix every finding, run the same lane target again, and
+     keep reconciliation blocked until a subsequent result is `pass` or an approved reviewer
+     decision changes the lane state.
+   - `unavailable`: block lane reconciliation and record the reason. A timeout, crash, invalid
+     target, unreadable target, or malformed scanner response is never a pass.
+4. Measure the aggregate wall-clock ceremony from runner start through any required review. If it
+   exceeds 10 minutes for a simple or medium task, record a blocking `unavailable` result. Do not
+   convert a budget overrun into `pass`.
+5. Store the runner result, exact scanned scope, elapsed time, and any review decision in the lane
+   evidence. Findings remain tied to the lane that produced them.
 
 ## Boundaries
 
-- Authorized targets only: the operator's own repository tree and explicit fixtures.
-- The scan is read-only and deterministic: no network calls, no mutations, no active
-  exploitation patterns, no third-party targets.
-- Image-bearing or multi-runtime payloads follow the capability contract
-  (`harness-capability-check.mjs`), not this skill.
+- Authorized targets are the operator's own repository tree and explicit fixtures only.
+- The scan is read-only and deterministic. It makes no network calls, mutates no target, and does
+  not perform active exploitation.
+- Escalation is a scheduler decision. The runner never dispatches an agent.
+- Image-bearing or multi-runtime payloads follow `harness-capability-check.mjs`, not this skill.
 
-## Time budgets (measured in the guardrails run)
+## Time budgets
 
 | Step | Budget |
 |---|---|
-| Deterministic scan (full gate) | ≤ 2 min |
-| Total ceremony, simple/medium task | ≤ 10 min wall-clock |
-| Escalation to operator-approved security review | only on findings or tier ≥ sampling |
+| Per-lane deterministic runner | 120 seconds maximum |
+| Total ceremony for a simple or medium task | 10 minutes wall-clock maximum |
+| Security-analyst escalation | Once per reconciled lane, or once per aggregated wave |

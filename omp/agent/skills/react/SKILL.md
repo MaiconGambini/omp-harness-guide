@@ -1,6 +1,6 @@
 ---
 name: react
-description: React/Next.js best practices for modern, performant applications.
+description: "Build React and Next.js interfaces. Use when creating components, hooks, or Suspense boundaries. Do NOT use for styling (use frontend-design)."
 ---
 
 # React/Next.js Standards

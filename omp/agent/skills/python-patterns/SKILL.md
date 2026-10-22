@@ -1,6 +1,6 @@
 ---
 name: python-patterns
-description: "Python development principles and decision-making. Framework selection, async patterns, type hints, project structure. Teaches thinking, not copying."
+description: "Apply Python design and architecture patterns. Use when choosing frameworks or code structure. Do NOT use for tests (use python-testing-patterns)."
 risk: unknown
 source: community
 date_added: "2026-02-27"

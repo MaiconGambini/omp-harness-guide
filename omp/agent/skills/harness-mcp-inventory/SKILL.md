@@ -1,6 +1,6 @@
 ---
 name: harness-mcp-inventory
-description: Use when auditing MCP servers across OpenCode, project MCP files, and Cursor mcp.json for drift, duplication, and inline secret headers.
+description: "Audits MCP server definitions for drift, duplicates, and secrets. Use when reviewing MCP setups across OpenCode and Cursor. Do NOT use for agent role permissions (use harness-agent-permissions)."
 ---
 
 # Harness MCP Inventory

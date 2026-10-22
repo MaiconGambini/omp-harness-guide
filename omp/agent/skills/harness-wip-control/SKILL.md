@@ -1,6 +1,6 @@
 ---
 name: harness-wip-control
-description: Decompose broad requests into WIP=1 atomic units before any execution. One active task at a time.
+description: "Decompose broad requests into WIP=1 atomic units. Use when given multi-step requests before editing files. Do NOT use for ticket tracking schema conversions (use to-tickets)."
 ---
 
 # Harness WIP Control

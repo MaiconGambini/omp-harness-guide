@@ -1,6 +1,6 @@
 ---
 name: harness-runtime-feedback
-description: Build a task-specific runtime evidence plan. Use when validation needs logs, health checks, error signals, browser/network evidence, or observability.
+description: "Plan task-specific runtime evidence. Use when validation needs logs, health checks, or telemetry. Do NOT use for final completion checks (use harness-termination-check)."
 ---
 
 # Harness Runtime Feedback

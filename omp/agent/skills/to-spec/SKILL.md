@@ -1,6 +1,6 @@
 ---
 name: to-spec
-description: Convert established conversation decisions into a concise Agent OS specification without reopening requirements discovery.
+description: "Synthesize agreed decisions into an Agent OS spec. Use when formalizing settled requirements into spec.md. Do NOT use for ticket decomposition (use to-tickets)."
 ---
 
 # To Spec

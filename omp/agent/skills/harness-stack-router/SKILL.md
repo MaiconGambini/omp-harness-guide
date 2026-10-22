@@ -1,3 +1,7 @@
+---
+name: harness-stack-router
+description: "Detect project language, framework, and tooling signals. Use when discovering stack skills during setup. Do NOT use for loading specific rulebooks (use harness-standards-router)."
+---
 # Harness Stack Router
 
 Detect project stack signals and recommend standards, skills, and verification.

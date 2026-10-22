@@ -79,8 +79,9 @@ export const STORAGE_HIGH_RISK_GLOBS = ["**/standards/**"]
 
 const VALID_CLASSES = new Set(["rule_violation", "operator_note", "blind_spot", "defect", "nit"])
 const VALID_ENFORCEMENTS = new Set(["prose", "lint", "test", "gate_metric"])
-const VALID_STATUSES = new Set(["candidate", "active"])
+const VALID_STATUSES = new Set(["candidate", "active", "quarantined", "expired"])
 const VALID_TIERS = new Set(["full", "sampling", "auto"])
+export const RULE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const DEFAULT_RULE_TEXT_MAX_CHARS = 200
 const DEFAULT_MIN_FINDINGS_TO_PROPOSE = 3
 const DEFAULT_MIN_SESSIONS_TO_PROPOSE = 1
@@ -250,7 +251,199 @@ function slugify(text) {
 }
 
 // ---------------------------------------------------------------------------
-// record validation (A1, B10)
+// noise gate (AC-OUT-1, AC-OUT-2)
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+export const BANNED_WORDS = [
+  "obviously",
+  "simply",
+  "delve",
+  "seamless",
+  "streamline",
+  "leverage",
+  "crucial",
+  "pivotal",
+  "tapestry",
+  "foster",
+  "landscape",
+  "furthermore",
+  "moreover",
+  "kudos",
+  "awesome",
+  "sorry",
+  "apologies",
+  "obviamente",
+  "simplesmente",
+  "ademais",
+  "parabens",
+  "desculpe",
+]
+
+export const BANNED_PHRASES = [
+  "you forgot",
+  "you missed",
+  "great job",
+  "nice work",
+  "good catch",
+  "hope this helps",
+  "let me know",
+  "feel free",
+  "happy to",
+  "it's worth noting",
+  "its worth noting",
+  "worth noting",
+  "note that",
+  "just a heads up",
+  "as you can see",
+  "thanks for",
+  "thank you for",
+  "i think maybe",
+  "perhaps consider",
+  "you might want to",
+  "it would be beneficial",
+  "testament to",
+  "otimo trabalho",
+  "bom trabalho",
+  "espero que ajude",
+  "fique a vontade",
+  "sinta-se a vontade",
+  "vale ressaltar",
+  "vale a pena notar",
+  "vale notar",
+  "note que",
+  "alem disso",
+  "voce esqueceu",
+  "com toda certeza",
+]
+
+export const BANNED_OPENERS = [
+  "let me",
+  "i'll",
+  "i will",
+  "looking at",
+  "first,",
+  "so,",
+  "sure",
+  "ok,",
+  "okay",
+  "great",
+  "vou ",
+  "deixa eu",
+  "primeiramente",
+  "olhando",
+  "bom,",
+]
+
+const NOT_ONLY_BUT_REGEXES = [
+  /\b(not|isn'?t|doesn'?t|don'?t|aren'?t|wasn'?t)\s+(just|only|merely)\b.{0,80}\bbut\b/is,
+  /\bnao\s+(apenas|so|somente)\b.{0,80}\bmas\b/is,
+]
+
+function stripCode(text) {
+  let s = text.replace(/```[\s\S]*?```/g, " ").replace(/~~~[\s\S]*?~~~/g, " ")
+  s = s.replace(/``[\s\S]*?``/g, " ")
+  s = s.replace(/`[^`]*`/g, " ")
+  return s
+}
+
+export function checkNoise(text) {
+  if (typeof text !== "string" || text.trim() === "") return []
+
+  const stripped = stripCode(text)
+  const normalized = stripped
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’‘]/g, "'")
+    .toLowerCase()
+
+  const violations = []
+
+  // 1. Openers (only at start of summary)
+  const trimmed = normalized.trimStart()
+  for (const op of BANNED_OPENERS) {
+    let matched = false
+    if (op.endsWith(",")) {
+      const base = op.slice(0, -1).trim()
+      const rx = new RegExp(`^${base}\\s*,`, "i")
+      matched = rx.test(trimmed)
+    } else if (op.endsWith(" ")) {
+      const base = op.trim()
+      const rx = new RegExp(`^${base}\\s+`, "i")
+      matched = rx.test(trimmed)
+    } else {
+      const rx = new RegExp(`^${escapeRegex(op)}(?:\\s|[,.:;!?]|$)`, "i")
+      matched = rx.test(trimmed)
+    }
+    if (matched) {
+      violations.push(op)
+    }
+  }
+
+  // 2. Banned words (word-boundary)
+  for (const word of BANNED_WORDS) {
+    const rx = new RegExp(`\\b${escapeRegex(word)}\\b`, "i")
+    if (rx.test(normalized)) {
+      violations.push(word)
+    }
+  }
+
+  // 3. Banned phrases
+  for (const phrase of BANNED_PHRASES) {
+    const pattern = phrase.split(/\s+/).map(escapeRegex).join("\\s+")
+    const rx = new RegExp(`\\b${pattern}\\b`, "i")
+    if (rx.test(normalized)) {
+      violations.push(phrase)
+    }
+  }
+
+  // 4. Not-only-but regex
+  for (const rx of NOT_ONLY_BUT_REGEXES) {
+    if (rx.test(normalized)) {
+      violations.push("not only... but")
+      break
+    }
+  }
+
+  return [...new Set(violations)]
+}
+
+export function validateLaneEnvelope(env) {
+  const errors = []
+  if (env === null || typeof env !== "object" || Array.isArray(env)) {
+    return { ok: false, errors: ["envelope must be an object"] }
+  }
+
+  if (env.status !== "ok" && env.status !== "error") {
+    errors.push(`status must be "ok" or "error", received ${JSON.stringify(env.status)}`)
+  }
+
+  if (typeof env.summary !== "string" || env.summary.trim() === "") {
+    errors.push("summary must be a non-empty string")
+  }
+
+  if (env.status === "error") {
+    if (!Array.isArray(env.failures) || env.failures.length === 0) {
+      errors.push("failures must be a non-empty array when status is error")
+    }
+
+    if (typeof env.summary === "string") {
+      const requiredLabels = ["failed_attempts", "decision", "next_step"]
+      for (const label of requiredLabels) {
+        if (!env.summary.includes(label)) {
+          errors.push(`summary must contain label '${label}' when status is error`)
+        }
+      }
+    }
+  }
+
+  return { ok: errors.length === 0, errors }
+}
+
+// ---------------------------------------------------------------------------
+// record validation (A1, B10, R7)
 
 // Shape check per the findings README, AND lane/capability/model/changed_lines_in_lane
 // validated against the run's lane manifest — never against git (review B10): the dual
@@ -279,10 +472,22 @@ export function validateRecord(record, { root, manifest } = {}) {
   if (!has("lane")) errors.push("missing lane")
   if (!has("capability")) errors.push("missing capability")
   if (!has("model")) errors.push("missing model")
+  if (!Object.prototype.hasOwnProperty.call(record, "evidence_rung")) {
+    errors.push("missing evidence_rung — expected integer 1-5")
+  } else if (!Number.isInteger(record.evidence_rung) || record.evidence_rung < 1 || record.evidence_rung > 5) {
+    errors.push(`invalid evidence_rung — expected integer 1-5, received ${JSON.stringify(record.evidence_rung)}`)
+  }
   if (typeof record.changed_lines_in_lane !== "number" || !Number.isInteger(record.changed_lines_in_lane) || record.changed_lines_in_lane < 0) {
     errors.push("changed_lines_in_lane must be a non-negative integer")
   }
-  if (!has("summary")) errors.push("missing summary")
+  if (!has("summary")) {
+    errors.push("missing summary")
+  } else {
+    const noise = checkNoise(record.summary)
+    for (const term of noise) {
+      errors.push(`summary contains banned noise term ${JSON.stringify(term)} — findings must be terse, factual, and evidence-grounded`)
+    }
+  }
   if (record.class === "rule_violation") {
     if (!has("rule")) {
       errors.push("rule_violation with no rule — a reviewer that cannot cite the rule must downgrade to blind_spot or nit")
@@ -385,7 +590,11 @@ export function validateLedger(ledger, { root, config } = {}) {
       errors.push(`${where} must be an object`)
       continue
     }
-    if (typeof rule.id !== "string" || !rule.id.trim()) errors.push(`${where}.id required`)
+    if (typeof rule.id !== "string" || !rule.id.trim()) {
+      errors.push(`${where}.id required`)
+    } else if (!RULE_ID_PATTERN.test(rule.id)) {
+      errors.push(`${where}.id ${JSON.stringify(rule.id)} must match /^[a-z0-9][a-z0-9._-]{0,63}$/`)
+    }
     if (typeof rule.text !== "string") errors.push(`${where}.text required`)
     else checkInjectedText(rule.text, maxChars, `${where}.text`, errors)
     if (typeof rule.target !== "string") errors.push(`${where}.target required`)
@@ -430,8 +639,35 @@ export function validateLedger(ledger, { root, config } = {}) {
     if (!provenance || typeof provenance !== "object") {
       errors.push(`${where}.provenance required`)
     } else {
-      for (const field of ["first_seen", "proposed_by", "approved_by", "approved_at", "refuted_by"]) {
+      for (const field of ["first_seen", "proposed_by"]) {
         if (typeof provenance[field] !== "string" || !provenance[field].trim()) errors.push(`${where}.provenance.${field} required`)
+      }
+      if (rule.status === "candidate" || (rule.status === "expired" && !provenance.approved_by)) {
+        if (rule.status === "candidate") {
+          if (provenance.approved_by !== undefined && provenance.approved_by !== null) {
+            errors.push(`${where}.provenance.approved_by must be absent for status candidate`)
+          }
+          if (provenance.approved_at !== undefined && provenance.approved_at !== null) {
+            errors.push(`${where}.provenance.approved_at must be absent for status candidate`)
+          }
+          if (provenance.refuted_by !== undefined && provenance.refuted_by !== null) {
+            errors.push(`${where}.provenance.refuted_by must be absent for status candidate`)
+          }
+        }
+      } else {
+        const isPromotedRecurrence = provenance.promoted_by === "recurrence" || rule.promoted_by === "recurrence"
+        if (isPromotedRecurrence) {
+          const promotedAt = provenance.promoted_at ?? rule.promoted_at
+          if (typeof promotedAt !== "string" || !promotedAt.trim()) {
+            errors.push(`${where}.promoted_at required when promoted_by is "recurrence"`)
+          }
+        } else {
+          for (const field of ["approved_by", "approved_at", "refuted_by"]) {
+            if (typeof provenance[field] !== "string" || !provenance[field].trim()) {
+              errors.push(`${where}.provenance.${field} required`)
+            }
+          }
+        }
       }
       if (!Array.isArray(provenance.source_findings)) errors.push(`${where}.provenance.source_findings must be an array`)
       if (provenance.approved_by === "rule-verifier") {
@@ -498,7 +734,7 @@ export function validateLedger(ledger, { root, config } = {}) {
             errors.push(`${where}.created_at_run must not be later than approved_at — a rule cannot be created in a session after its approval (session compatibility, SEC-R1)`)
           }
         }
-      } else if (provenance.approved_by !== undefined && !["operator", "rule-verifier"].includes(provenance.approved_by)) {
+      } else if (provenance.approved_by !== undefined && provenance.approved_by !== null && !["operator", "rule-verifier"].includes(provenance.approved_by)) {
         errors.push(`${where}.provenance.approved_by ${JSON.stringify(provenance.approved_by)} — expected operator or rule-verifier`)
       }
     }
@@ -514,6 +750,18 @@ export function validateLedger(ledger, { root, config } = {}) {
           }
         }
       }
+    }
+  }
+  for (const [index, entry] of (ledger.retired ?? []).entries()) {
+    const where = `retired[${index}]`
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      errors.push(`${where} must be an object`)
+      continue
+    }
+    if (typeof entry.id !== "string" || !entry.id.trim()) {
+      errors.push(`${where}.id required`)
+    } else if (!RULE_ID_PATTERN.test(entry.id)) {
+      errors.push(`${where}.id ${JSON.stringify(entry.id)} must match /^[a-z0-9][a-z0-9._-]{0,63}$/`)
     }
   }
   return { ok: errors.length === 0, errors }
@@ -633,10 +881,31 @@ export function newestTier(window) {
 // exclusion.
 export function countableWindow(window) {
   const tier = newestTier(window)
+
   if (!tier) return []
   return (window ?? []).filter(
     (entry) => isCountable(entry) && String(entry.data.run.tier ?? "").toLowerCase() === tier,
   )
+}
+// Minimum rung is an observation of the countable, hash-bound population. Any invalid
+// record makes the window unavailable; silently dropping it would turn a partial review
+// into a fabricated minimum.
+export function minimumEvidenceRung(window, { report, tier, git, root } = {}) {
+  const assessed = assessWindow(window, { report, tier, git, root })
+  if (!assessed.ok) return { status: "unavailable", reason: `findings window unavailable — ${assessed.errors.join("; ")}` }
+  const counted = countableWindow(window)
+  if (counted.length === 0) return { status: "unavailable", reason: "findings window unavailable — no hash-bound countable findings file" }
+  const rungs = []
+  for (const entry of counted) {
+    const manifest = Array.isArray(entry.data?.manifest?.lanes) ? entry.data.manifest : null
+    for (const [index, finding] of (entry.data.findings ?? []).entries()) {
+      const result = validateRecord(finding, { root, manifest })
+      if (!result.ok) return { status: "unavailable", reason: `${entry.file}: invalid finding ${index} — ${result.errors.join("; ")}` }
+      rungs.push(finding.evidence_rung)
+    }
+  }
+  if (rungs.length === 0) return { status: "unavailable", reason: "findings window unavailable — no typed findings carry evidence_rung" }
+  return { status: "ok", value: Math.min(...rungs), detail: "minimum evidence_rung from hash-bound findings window" }
 }
 
 // Why a window entry is not part of the countable population — emitted per file so a

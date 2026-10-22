@@ -1,6 +1,6 @@
 ---
 name: harness-omp-parallel
-description: 'Oh My Pi native parallel execution model for the harness — shard slow tests and run reviewers/lanes concurrently via the task tool to fix quality-gate and test slowness. Use during PREVC Execute/Validate on large projects.'
+description: "Shards tests and runs reviewers via OMP task execution. Use when speeding up slow test suites or parallel lanes in PREVC. Do NOT use for general agent fan-out (use dispatching-parallel-agents)."
 ---
 
 # harness-omp-parallel — native parallel execution for the omp harness
@@ -82,16 +82,15 @@ time of the slowest single shard.
 
 ## REVIEWER CONCURRENCY
 
-Dispatch `code-reviewer` + `architecture-reviewer` in ONE batch at tier **full**.
-An operator-approved security review is also required. Reviewers are read-only,
-so they never race and never need `hub` coordination. Never run reviewers serially.
+Dispatch `code-reviewer` + `architecture-reviewer` in ONE batch — and add
+`security-analyst` at tier **full**. They are read-only, so they never race and
+never need `hub` coordination. Never run reviewers serially.
 
 ```
 task(tasks=[
   { agent:"code-reviewer",         task:"Review the reconciled diff for standards/quality; return findings JSON." },
   { agent:"architecture-reviewer", task:"Review boundaries/coupling on the reconciled tree; return findings JSON." },
-  // Security review is an explicit operator action, not a bundled public agent.
-  { task:"[tier=full] Operator-approved security review of the diff; return findings JSON." },
+  { agent:"security-analyst",      task:"[tier=full] Evidence-backed vuln scan of the diff; return findings JSON." },
 ])
 ```
 
@@ -120,22 +119,20 @@ alongside writers.
 
 - **Red-team quickcheck per reconciled lane (R1):** after each lane lands, run
   `node ~/.omp/agent/scripts/harness-redteam-scan.mjs --metric`; findings escalate to
-  an operator-approved security review (also at tier ≥ `sampling`). ≤ 2 min per scan, ≤ 10 min total
+  `security-analyst` (also at tier ≥ `sampling`). ≤ 2 min per scan, ≤ 10 min total
   ceremony for simple/medium tasks.
 - **Dependency cooldown (R3):** never add a dependency under the fixed 7-day cooldown;
   `harness-dependency-cooldown.mjs` enforces it via `dependency_cooldown` (operator
   `--approve <name>@<version> --yes` only).
-- **Provider fallback (R7):** a failed lane is re-dispatched ONCE on the alternate
-  allowed model (`opencode-go/deepseek-v4-flash` ⇄ `opencode-go/glm-5.3-flash`), logged to
-  `docs/harness/quality/fallback-events.json`; exhaustion → `blocked:
-  provider-fallback-exhausted`. The scheduler never auto-downgrades.
-- **Multimodal (R6):** images stay in the main session; a `glm-5.3-flash` lane takes an
-  image only when its role permits it and the capability check passes; a text-only
-  `deepseek-v4-flash` lane returns `blocked: multimodal-unsupported` (no text-only
-  fallback, in-main handling).
-- **Model matrix (R8):** scheduler = `openai-codex/gpt-5.6-luna:xhigh` (the orchestrator
-  equivalent) ONLY; every other subagent = `opencode-go/deepseek-v4-flash:max` or
-  `opencode-go/glm-5.3-flash:max`; normal `glm-5.3`/DeepSeek Pro never assigned.
+ - **Provider fallback (R7):** common subagents get exactly ONE retry, only for
+   provider/auth/quota/rate/timeout/incapacity failures, on Luna `high`; test failures
+   and findings never trigger it. Scheduler Luna `xhigh` errors alert and block, with no
+   automatic fallback/downgrade.
+ - **Model matrix (R8):** scheduler Luna `xhigh`; default/implement/recon/review Luna
+   `medium`; research/test/refine GLM Flash `high`. Explorer, test-runner, refiner and
+   rule-verifier use GLM Flash `high`; other implementer/advisor/reviewer/Judge roles use
+   Luna `medium`.
+ - **Multimodal (R6):** images stay in the main session; capability failures block and
 
 ## WHAT NOT TO DO
 

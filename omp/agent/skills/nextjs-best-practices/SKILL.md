@@ -1,6 +1,6 @@
 ---
 name: nextjs-best-practices
-description: "Next.js App Router principles. Server Components, data fetching, routing patterns."
+description: "Apply architectural rules for Next.js App Router applications. Use when organizing Server and Client Components or data flow. Do NOT use for UI component styling (use shadcn-ui)."
 risk: unknown
 source: community
 date_added: "2026-02-27"

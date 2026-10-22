@@ -15,6 +15,6 @@ Each surface degrades to a named `unavailable` marker when its artifact is missi
 Read the durable lifecycle directly as well: run `node ~/.omp/agent/scripts/harness-prevc-state.mjs inspect --json` and fold its result into the report. In a project with `agent-os/` or `docs/harness/`:
 - state missing, unreadable, or `phase` unknown → **WARN** — name what is absent, never pass it;
 - handoff missing when the phase is `awaiting_confirmation` or `complete` → **WARN**;
-- a `blocked` phase persists from the previous session (a red gate survives session end with its metric/value/threshold blocker) → **WARN** with the blocker text, until the operator resolves it.
+- a `blocked` phase persists only from an explicit operator transition (`--to blocked`) or a Judge receipt verdict `block` (red gates drive the autofix loop and never persist `blocked` automatically) → **WARN** with the blocker text until resumed (via `blocked -> execute`).
 
 Identify the next best action. Reference `skill://harness-status` for interpretation.

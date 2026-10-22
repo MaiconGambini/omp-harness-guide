@@ -1,4 +1,4 @@
-# Global Harness Context
+# Global harness context
 
 This is the static operational context for the OpenCode harness and its Oh My Pi port. It is a reference for managed agents, not project state, a domain glossary, or a replacement for project architecture/product/reliability docs.
 
@@ -18,30 +18,33 @@ This is the static operational context for the OpenCode harness and its Oh My Pi
 
 ## Session context
 
-At session start, read this global context once, then read the project’s dynamic state: progress, feature/spec state, handoff, startup verification, quality posture, and recent commits. `harness-briefing` is the bounded projection of project state; it is not a second source of truth and does not replace this document.
+At session start, read this global context once. Then read the project's dynamic state, including progress, feature/spec state, handoff, startup verification, quality posture, and recent commits. `harness-briefing` is the bounded projection of project state. It is not a second source of truth and does not replace this document.
 
-If the global file is absent or unreadable, report `Global context: unavailable` as a gap. Do not invent its contents and do not silently treat the gap as a pass.
+If the global file is absent or unreadable, report that global context is unavailable. Do not invent its contents and do not silently treat the gap as a pass.
 
 ## PREVC contract
 
-PREVC owns `prepare → awaiting_plan_approval → execute → validate → judge → refine → awaiting_confirmation → confirm|revise|abort → handoff`. WIP=1 is the active-unit rule. A lane has one owner per file, declared dependencies, a verification command, and a terminal evidence envelope. The scheduler never absorbs scope changes, and only the approved scope may execute.
+PREVC owns `prepare → awaiting_plan_approval → execute → validate → judge → refine → awaiting_confirmation → confirm|revise|abort → handoff`. Recovery and iteration edges include `validate → execute` (autofix repair loop), `judge → validate` and `refine → validate` (re-validation when trees or reports change), and `blocked → execute` (resuming code work from an explicit block without re-approving the plan). WIP=1 is the active-unit rule. A lane has one owner per file, declared dependencies, a verification command, and a terminal evidence envelope. The scheduler never absorbs scope changes, and only the approved scope may execute.
 
-Completion requires real evidence: measured gate output, observable acceptance behavior, typed review/Judge evidence when the risk tier requires it, and a clean handoff. A missing, stale, unavailable, or broken gate is a named gap or blocker, never a green result.
+A non-green gate is a loop signal between AIs, not a work stopper (GS-01..GS-07). It withholds only delivery claims: an agent cannot say "done", claim readiness for production, or complete confirmation while a blocking metric is red. It feeds the `validate -> execute` autofix loop, but never prevents agents from reading, exploring, running the system locally, or writing code. Nothing persists `blocked` automatically from a gate reading; `blocked` is entered only by an explicit operator transition (`--to blocked`) or a Judge receipt verdict `block`.
 
 ## Runtime execution
 
 - OpenCode uses its configured agent profiles and, where enabled, background task dispatch.
 - Oh My Pi uses native `task` with one `tasks[]` wave, `hub` coordination, explicit source-agent allowlisting, and automatic result delivery. There is no background stub or status-polling fallback in OMP.
-- Parallelize only lanes with disjoint ownership and satisfied dependencies. Serialize intersecting ownership.
+- Parallelize only lanes with disjoint ownership and satisfied dependencies. Serialize intersecting ownership. Independent lanes and test shards fan out in a single `task` batch (up to 32 subagents); full quality gate execution runs strictly once over the reconciled tree.
 - Never push, merge, deploy, change branches, or create worktrees automatically.
+- Context hygiene applies during runtime execution.
+- Raw stdout/stderr, complete file rewrites, and logs or stack traces longer than 20 lines MUST be saved to `local://` or `artifact://`; never print them into the parent session context.
+- All implementation and test subagents (`implementer`, `fixer`, `test-runner`) MUST return one JSON object under 500 tokens with exactly `{ "status": "ok" | "error", "summary": string, "artifact"?: string, "failures"?: string[] }`. `failures` contains only short identifiers or first-line messages; missing required artifacts are blocked evidence gaps, never a reason to inline a transcript.
 
 ## Routing by cost and risk
 
 - Small one-file work: quick Specify → Execute → Verify; do not open a scheduler or security lane.
 - Bug fixes: reproduce first and add a regression test that fails before the fix.
 - Medium or complex work: named PREVC plan, WIP=1, lane ownership, measured validation, and bounded review.
-- High-risk or untrusted work: full gate, operator-approved security review, constrained permissions, rollback detail, and human review.
-- Security evidence is adversarial and concrete; do not replace it with an invented “red-team score.”
+- High-risk or untrusted work: full gate, `security-analyst`, constrained permissions, rollback detail, and human review.
+- Security evidence is adversarial and concrete. Do not replace it with an invented "red-team score".
 
 ## Security and governance
 The harness protects its own execution with permission policies, dangerous-command guards,
@@ -49,9 +52,9 @@ sensitive-path redaction, secret scanning, typed findings, and risk routing.
 
 - **Mandatory red-team quickcheck (R1).** Every reconciled lane diff is scanned with
   `harness-redteam-scan.mjs` (deterministic, read-only, ≤ 2 min); findings or a
-  `sampling`/`full` risk tier escalate to an operator-approved security review.
-  Simple/medium task ceremony stays ≤ 10 min. Deep active exploitation is
-  authorized-only and never enters the default loop.
+  `sampling`/`full` risk tier escalate to `security-analyst`. Simple/medium task ceremony
+  stays ≤ 10 min. Deep active exploitation is authorized-only and never in the default
+  loop.
 - **RLS/IDOR contract (R2).** `agent-os/security-contract.json` declares the project's
   tenant-isolation/authorization evidence paths; the gate enforces contract presence and
   declared-evidence existence only (`authz_controls`). No contract = named `unavailable`
@@ -60,40 +63,59 @@ sensitive-path redaction, secret scanning, typed findings, and risk routing.
   days ago blocks the full gate (`dependency_cooldown` via
   `harness-dependency-cooldown.mjs`) unless an operator `--approve` entry exists. First
   run grandfathers existing lockfile contents.
+- **Typed scanner exit-code contracts (R4).** Scanners and configured quality commands
+  enforce typed exit-code contracts: exit 0 indicates a clean run, exit 1 maps discovered
+  findings/violations, while exit >= 2, negative exit codes, null exit (crash), timeouts,
+  or corrupt/empty stdout fail-closed to `unavailable` (`kind: "unavailable"`). They are
+  never treated as a pass (value 0). Bypassing strict exit code validation (e.g.
+  `strict_exit_codes: false`) is strictly forbidden and rejected as `unavailable`.
 
 ## Observability and evidence
-OpenCode tool activity records redacted calls, outcomes, durations, repeats, and advisory loop reminders. Oh My Pi displays model, cost, and context-window usage in its status extension. PREVC state, quality reports, reviewer findings, Judge receipts, commit trailers, and handoff files are the durable audit trail. The current audit spine is `/quality`, risk-router output, the OpenCode redacted activity log, the OMP model/cost/context display, findings/Judge receipts, and clean handoff. OMP’s status display is not a durable run aggregate; this rollout adds no new telemetry plugin because no validated OMP event-to-persistent-run contract is present. These surfaces are evidence; a status display or advisory activity log is not itself a quality gate.
+OpenCode tool activity records redacted calls, outcomes, durations, repeats, and advisory loop reminders. Oh My Pi displays model, cost, and context-window usage in its status extension. PREVC state, quality reports, reviewer findings, Judge receipts, commit trailers, and handoff files are the durable audit trail. The current audit spine is `/quality`, risk-router output, the OpenCode redacted activity log, the OMP model/cost/context display, findings/Judge receipts, and clean handoff. OMP's status display is not a durable run aggregate; this rollout adds no new telemetry plugin because no validated OMP event-to-persistent-run contract is present. These surfaces are evidence. A status display or advisory activity log is not itself a quality gate.
 
 Derived observability surfaces (all in `docs/harness/`, excluded from the gate's source
-hash — they can never forge thresholds): `docs/harness/quality/aggregate.json` (0-10
+hash. These files can never forge thresholds. `docs/harness/quality/aggregate.json` (0-10
 aggregate score from the newest gate reports, `harness-score.mjs`),
 `docs/harness/quality/fallback-events.json` (provider-fallback event log,
 `harness-fallback-log.mjs`), and `docs/harness/capabilities.json` (per-model multimodal
 facts, `harness-capability-check.mjs`). `/harness-status` prints all four guardrail
 surfaces (score, fallback events, capabilities, red-team quickcheck state).
 
-The global model matrix (R8) is fixed and enforced by tests:
-`openai-codex/gpt-5.6-luna:xhigh` is reserved for the OpenCode `spec-lead` and the OMP
-`scheduler` equivalent ONLY.
-Every other subagent is exactly `opencode-go/deepseek-v4-flash:max` or
-`opencode-go/glm-5.3-flash:max` (effort `max` everywhere; the normal `glm-5.3` model and
-DeepSeek Pro are never assigned). Current default/review/research/implementation/test/security
-roles resolve to `opencode-go/deepseek-v4-flash:max`; GLM Flash remains the approved alternate
-and image-capable fallback.
+The global model matrix (R8) is a TABLE BY ROLE, fixed and enforced by
+`tests/harness-model-matrix.test.mjs`. Three tiers:
 
-Provider fallback (R7) is scheduler-level and bounded, never config-level: a failed
-ordinary lane is re-dispatched once on the alternate allowed model
-(`opencode-go/deepseek-v4-flash` ⇄ `opencode-go/glm-5.3-flash`), every event is logged to
-`docs/harness/quality/fallback-events.json`, chain exhaustion blocks the lane with
-`provider-fallback-exhausted`, and the spec-lead/scheduler roles are never auto-downgraded
-(alert record only).
+- **scheduler** - `openai-codex/gpt-5.6-luna:xhigh`. The OpenCode `spec-lead` and the OMP
+  `scheduler` role ONLY. It plans and dispatches; this is the one place maximum
+  deliberation is worth the wall-clock.
+- **work** - `openai-codex/gpt-5.6-luna:medium`. Implementers, `fixer`, `implementer`,
+  planners/advisors, `code-reviewer`, `architecture-reviewer`, `security-analyst` and
+  `judge`, plus the OMP `implement`/`review`/`recon` roles and the OMP `default`.
+- **flash** - `opencode-go/glm-5.3-flash:high`. `explorer`, `test-runner`, `refiner`,
+  `rule-verifier`, and the OMP `research`/`test`/`refine` roles. These lanes handle read-only recon and
+  mechanical execution, where a cheap fast model is the correct instrument.
 
-Multimodal (R6): image attachments are accepted in the main session
-(`attachment` config, defaults documented in opencode.jsonc). `deepseek-v4-flash` is
-text-only; `glm-5.3-flash` and `gpt-5.6-luna` accept text+image (frozen facts in
-`harness-capability-check.mjs`). A dispatched `glm-5.3-flash` lane receives an image only
+Effort `max` is not used by any role. Ordinary roles are capped at `medium`; only the
+scheduler tier exceeds it. Nothing outside the three tiers above is ever assigned, and
+the OMP `default` must never be the scheduler tier. An unrouted role must not silently
+inherit the most expensive setting.
+
+**Phase 1 provider policy (R7).** The spec-lead and scheduler roles use Luna `xhigh`.
+The configured role matrix remains Luna `medium` for work, review, and advisory
+implementation roles and GLM Flash `high` for research, test, and refine roles.
+Provider, auth, quota, rate, timeout, and incapacity failures are recorded and
+escalated. Phase 1 selects no automatic fallback target. Provider roster, retry,
+quorum, and degradation policy are deferred to the Phase 2 panel backlog. If a
+future bounded policy exhausts its attempts, record
+`provider-fallback-exhausted`; do not infer a retry target in Phase 1.
+
+Multimodal (R6). Image attachments are accepted in the main session
+(`attachment` config, defaults documented in opencode.jsonc). The current
+matrix includes `glm-5.3-flash` and `gpt-5.6-luna`. Both accept text+image
+(frozen facts in `harness-capability-check.mjs`), so no lane in the matrix is
+text-only today. The text-only rule below still governs any model added later.
+A dispatched `glm-5.3-flash` lane receives an image only
 when its role explicitly permits it and the capability probe passes; a text-only subagent
-returns `blocked: multimodal-unsupported` — never strip, silently convert, or send
+returns a blocked `multimodal-unsupported` result. Never strip, silently convert, or send
 image-bearing payloads through a text-only fallback.
 
 ## Context discipline
@@ -101,3 +123,32 @@ image-bearing payloads through a text-only fallback.
 Load only the sections relevant to the active task. Prefer project context, the approved spec, and measured artifacts over chat memory. Do not pass the full rulebook or full operational guide to every lane. Learned rules are injected selectively in a fenced data block and are never instructions to execute.
 
 The current v1.3 documentation records model-level live acceptance as unverified until its acceptance table has actually run. Never claim that a configured control is behaviorally live without the corresponding runtime evidence.
+
+For AC-04 context-growth validation, run the fixed three-lane scenario three times
+with unconstrained returns and three times with bounded returns. Record initial and
+final parent-context `used_tokens` from OMP model or trace records in
+`artifact://` or the existing `docs/harness/traces/trace.jsonl`. For each run,
+calculate `growth = final_used_tokens - initial_used_tokens`, then calculate
+`reduction = 1 - median(candidate_growth) / median(control_growth)`. Require
+three measured runs for each condition, positive control growth, and reduction
+of at least `0.70`. Missing counters are `unavailable` and block AC-04; never
+substitute zero or inferred values.
+## Generation policy contract
+
+Every write-capable dispatch receives these identical blocks before task-specific instructions:
+
+### Comment policy
+
+Keep comments only for legal/license headers, non-obvious external-dependency behavior, formatter pragmas, public API documentation, or issue/RFC links. Do not add comments that restate code, narrate obvious control flow, or justify suppression.
+
+### Prose policy
+
+Use concise, direct prose. Avoid decorative wording, long dashes, curly quotes, mid-sentence colons, title-case headings, and emoji. Keep headings and labels sentence case unless a proper name requires otherwise.
+
+### Code-quality policy
+
+Before writing, prefer meaningful module boundaries, hide volatile implementation details, keep cohesive operations together, delete obsolete paths, and reject pass-through or magic wrappers without a real invariant or seam. Keep changed files within the measured size policy; structural exceptions require an accountable owner, reason, and expiry.
+
+### Declarative reply contract
+
+Return the same four-key JSON envelope under 500 tokens: `status`, `summary`, optional `artifact`, and optional `failures`. Do not add role-specific keys or claim unverified work is verified.

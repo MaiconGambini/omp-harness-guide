@@ -1,6 +1,6 @@
 ---
 name: modular-monolith
-description: "Modular monolith architecture principles. Module boundaries, internal communication, shared kernel, and migration-ready design. Teaches how to build monoliths that scale without becoming big balls of mud."
+description: "Structure applications with module boundaries and shared kernels. Use when designing scalable monoliths or planning service splits. Do NOT use for microservice deployments (use backend-architect)."
 risk: unknown
 source: community
 date_added: "2026-03-11"

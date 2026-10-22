@@ -1,6 +1,6 @@
 ---
 name: harness-security-scan
-description: Use when scanning OpenCode/Cursor harness skills, agents, plugins, MCP configs, scripts, and goal memory for secrets, prompt injection, Unicode, and dangerous shell patterns.
+description: "Scan harness configs, skills, and MCPs for secrets and prompt injections. Use when auditing tooling and plugin security. Do NOT use for per-lane diffs (use harness-redteam-check)."
 ---
 
 # Harness Security Scan

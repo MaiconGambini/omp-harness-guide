@@ -9,7 +9,7 @@
 // declared regression/e2e selectors. It does not run the project's whole test suite — the
 // implementation lane already did, and doing it twice would double every parallel run.
 //
-// Exit codes: 0 pass/observe · 1 a blocking metric is red or the config guard failed · 2 the
+// Exit codes: 0 pass/observe · 1 a blocking metric is red or unavailable, or the config guard failed · 2 the
 // gate itself could not run. Never conflate 1 and 2 — a broken gate is not failing code.
 //
 // See docs/harness/measured-gates.md.
@@ -17,7 +17,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
-import { collectReadings, hasRecallAnnotation, toolVersion } from "./harness-quality-adapters.mjs"
+import { collectReadings, collectReadingsAsync, hasRecallAnnotation, toolVersion } from "./harness-quality-adapters.mjs"
+import { computeCoverageLabel } from "./harness-coverage-label.mjs"
 // The GLOBAL findings module, imported by module path — the deterministic validator
 // (review B12, T02 S2) is the code owner for learned_rules ranges; this module is the
 // named owner of the GATE-path read-time check. Same import shape the adherence adapter
@@ -25,10 +26,12 @@ import { collectReadings, hasRecallAnnotation, toolVersion } from "./harness-qua
 import { validateLearnedRules } from "./harness-findings.mjs"
 import { emitTraceEvent, loadTraceIdentity, safeTraceId } from "./harness-ship-evidence.mjs"
 import {
+  assessEvidenceDrift,
   baselineRegressions,
   checkReportShape,
   collectPreviousBars,
   configFingerprint,
+  createEvidenceEnvelope,
   DECISIONS_PATH,
   fingerprintChanges,
   fingerprintHash,
@@ -44,7 +47,40 @@ import {
 } from "./harness-quality-core.mjs"
 import { pathExists } from "./harness-common.mjs"
 
-export const STATUS = { PASS: "pass", FAIL: "fail", OBSERVE: "observe", UNAVAILABLE: "unavailable" }
+export const STATUS = {
+  PASS: "pass",
+  FAIL: "fail",
+  OBSERVE: "observe",
+  // Three flavours of "no number", because they mean different things and one of them
+  // used to poison every routing decision (see the adapter contract in
+  // harness-quality-adapters.mjs):
+  //   UNAVAILABLE     — should have measured and did not. Fail-closed, escalates.
+  //   NOT_CONFIGURED  — no instrument was ever wired up in this project. Named, counted,
+  //                     does NOT escalate: escalating on it escalates forever.
+  //   NOT_APPLICABLE  — the control does not apply to this project or this diff.
+  UNAVAILABLE: "unavailable",
+  NOT_CONFIGURED: "not_configured",
+  NOT_APPLICABLE: "not_applicable",
+}
+
+// The statuses that mean "there is no measurement here", in any flavour.
+export const UNMEASURED_STATUSES = [STATUS.UNAVAILABLE, STATUS.NOT_CONFIGURED, STATUS.NOT_APPLICABLE]
+export const isUnmeasured = (status) => UNMEASURED_STATUSES.includes(status)
+
+const UNMEASURED_KINDS = {
+  not_configured: STATUS.NOT_CONFIGURED,
+  not_applicable: STATUS.NOT_APPLICABLE,
+  unavailable: STATUS.UNAVAILABLE,
+}
+
+/**
+ * Maps an adapter's `kind` onto a row status. An absent or unrecognised kind is
+ * UNAVAILABLE on purpose: a new adapter that forgets to classify itself must be treated
+ * as a real gap, never quietly excused.
+ */
+export function unmeasuredStatus(kind) {
+  return UNMEASURED_KINDS[kind] ?? STATUS.UNAVAILABLE
+}
 
 export function detectStack(root) {
   const has = (relative) => pathExists(path.join(root, relative))
@@ -55,6 +91,8 @@ export function detectStack(root) {
     go: has("go.mod"),
   }
 }
+
+export { computeCoverageLabel }
 
 // ---------------------------------------------------------------------------
 // learned_rules read-time validation (security M4, review B12, T02 S2)
@@ -99,7 +137,10 @@ export function evaluate(metricName, config, reading, mode) {
     return { metric: metricName, status: "skipped", reason: `full-mode metric, ran at --mode ${mode}` }
   }
   if (!reading || reading.unavailable) {
-    return { metric: metricName, status: STATUS.UNAVAILABLE, reason: reading?.unavailable ?? "no adapter" }
+    // No reading at all means no adapter ran — that is a real gap, not a configuration
+    // choice, so it stays UNAVAILABLE.
+    const status = reading ? unmeasuredStatus(reading.kind) : STATUS.UNAVAILABLE
+    return { metric: metricName, mode: config.mode, status, reason: reading?.unavailable ?? "no adapter" }
   }
 
   const bar = ratchetBar(config)
@@ -481,7 +522,7 @@ export function checkRulebookSources(root, { listFiles: list } = {}) {
 export function renderTable(rows) {
   const header = ["Metric", "Value", "Threshold", "Status"]
   const body = rows.map((row) => {
-    if (row.status === STATUS.UNAVAILABLE) return [row.metric, "-", "-", `unavailable (${row.reason})`]
+    if (isUnmeasured(row.status)) return [row.metric, "-", "-", `${row.status} (${row.reason})`]
     if (row.status === "skipped") return [row.metric, "-", "-", `skipped (${row.reason})`]
     // FINAL-R1 (cosmetic): observation rows such as rules_active/rules_retired carry
     // direction null and threshold null — rendering them as "<= null" printed a literal null.
@@ -519,6 +560,14 @@ function renderMarkdown(report) {
     `- Label: ${report.label}`,
     `- Phase: ${report.phase}`,
     `- Source hash: ${report.sourceHash ?? "unknown"}`,
+    ...(report.coverageLabel
+      ? [
+          `- Measured: ${report.coverageLabel.measured}/${report.coverageLabel.total} metrics`,
+          ...(report.coverageLabel.unmeasuredMajority
+            ? [`- WARNING: most metrics unmeasured (${report.coverageLabel.measured}/${report.coverageLabel.total}); pass is not evidence of quality`]
+            : []),
+        ]
+      : []),
     `- Config fingerprint: ${report.fingerprint ?? "unknown"}`,
     `- Project commands: ${report.projectCommands ? "enabled" : "disabled (--no-project-commands)"}`,
     "",
@@ -545,7 +594,7 @@ function renderMarkdown(report) {
 // ---------------------------------------------------------------------------
 // main
 
-export function runGate(options = {}) {
+export async function runGate(options = {}) {
   const root = path.resolve(options.root ?? process.cwd())
   const mode = options.mode === "full" ? "full" : "local"
   const label = sanitizeLabel(options.label ?? "session")
@@ -554,7 +603,7 @@ export function runGate(options = {}) {
 
   const thresholds = readJsonIfExists(path.join(root, THRESHOLDS_PATH))
   if (!thresholds) {
-    return {
+    const unconfiguredReport = {
       verdict: "unconfigured",
       exitCode: 0,
       mode,
@@ -571,7 +620,14 @@ export function runGate(options = {}) {
       fingerprint: null,
       projectCommands,
       unconfigured: true,
+      coverageLabel: computeCoverageLabel({ total: 0, measured: 0, notApplicable: 0 }),
     }
+    unconfiguredReport.evidenceEnvelope = createEvidenceEnvelope(root, {
+      git: options.git ?? makeGit(root),
+      thresholds: null,
+      report: unconfiguredReport,
+    })
+    return unconfiguredReport
   }
 
   // Security M4: validate the learned_rules feature at read time, BEFORE anything can
@@ -604,7 +660,7 @@ export function runGate(options = {}) {
     const config = thresholds.metrics?.[name]
     return Boolean(config) && (config.speed !== "full" || mode === "full")
   }
-  const readings = collectReadings(ctx, mode, wants)
+  const readings = await collectReadingsAsync(ctx, mode, wants, options)
 
   const rows = Object.entries(thresholds.metrics ?? {})
     .map(([name, config]) => evaluate(name, config, readings[name], mode))
@@ -634,20 +690,32 @@ export function runGate(options = {}) {
 
   const failed = rows.filter((row) => row.status === STATUS.FAIL)
   const unavailable = rows.filter((row) => row.status === STATUS.UNAVAILABLE)
+  const blockingUnavailable = unavailable.filter((row) => row.mode === "blocking")
+  const notConfigured = rows.filter((row) => row.status === STATUS.NOT_CONFIGURED)
+  const notApplicable = rows.filter((row) => row.status === STATUS.NOT_APPLICABLE)
+  const measured = rows.filter((row) => !isUnmeasured(row.status))
   if (unavailable.length) {
     notes.push(
-      `${unavailable.length} of ${rows.length} metric(s) unavailable — a green exit code over ${rows.length - unavailable.length} measured rows means little. Read the table.`,
+      `${unavailable.length} of ${rows.length} metric(s) unavailable — these SHOULD have measured and did not. A green exit code over ${measured.length} measured rows means little. Read the table.`,
     )
+  }
+  if (notConfigured.length) {
+    notes.push(
+      `${notConfigured.length} of ${rows.length} metric(s) not_configured — no instrument exists for them in this project (${notConfigured.map((row) => row.metric).join(", ")}). Named, not measured, and not a failure: wire up a command or delete the metric.`,
+    )
+  }
+  if (notApplicable.length) {
+    notes.push(`${notApplicable.length} metric(s) not_applicable to this project or diff (${notApplicable.map((row) => row.metric).join(", ")}).`)
   }
   if (!projectCommands) {
     notes.push("project commands disabled: any metric that needs one is unavailable by choice, not by absence.")
   }
 
-  const verdict = !guard.ok ? "config-guard-failure" : failed.length ? "fail" : "pass"
-  const exitCode = !guard.ok || failed.length ? 1 : 0
+  const verdict = !guard.ok ? "config-guard-failure" : failed.length ? "fail" : blockingUnavailable.length ? "unavailable" : "pass"
+  const exitCode = !guard.ok || failed.length || blockingUnavailable.length ? 1 : 0
   if (!guard.ok) notes.push("Config was loosened with no recorded reason. Fix the file or record the decision in quality-decisions.md.")
 
-  return {
+  const report = {
     verdict,
     exitCode,
     mode,
@@ -655,6 +723,30 @@ export function runGate(options = {}) {
     phase: thresholds.phase ?? "unknown",
     timestamp: new Date().toISOString(),
     rows,
+    // Measurement coverage stays separate from the verdict: observe and non-blocking gaps remain
+    // visible without changing the gate, while blocking gaps produce the distinct unavailable verdict.
+    measurementCoverage: {
+      total: rows.length,
+      measured: measured.length,
+      unavailable: unavailable.length,
+      notConfigured: notConfigured.length,
+      notApplicable: notApplicable.length,
+      // Share of metrics that COULD be measured here and were. not_applicable rows are
+      // excluded from the denominator: they are not a coverage debt.
+      ratio: rows.length - notApplicable.length === 0
+        ? null
+        : Math.round((measured.length / (rows.length - notApplicable.length)) * 1000) / 1000,
+    },
+    coverageLabel: computeCoverageLabel({
+      total: rows.length,
+      measured: measured.length,
+      unavailable: unavailable.length,
+      notConfigured: notConfigured.length,
+      notApplicable: notApplicable.length,
+      ratio: rows.length - notApplicable.length === 0
+        ? null
+        : Math.round((measured.length / (rows.length - notApplicable.length)) * 1000) / 1000,
+    }),
     notes: notes.map(redact),
     sourceHash: sourceHash(root, { git, thresholds, fresh: true }),
     fingerprint: fingerprintHash(thresholds),
@@ -679,6 +771,41 @@ export function runGate(options = {}) {
       },
     },
     thresholdsPath: THRESHOLDS_PATH,
+  }
+  report.evidenceEnvelope = createEvidenceEnvelope(root, { git, thresholds, report })
+  return report
+}
+
+export function evaluateReportDrift(report, root, options = {}) {
+  const mode = options.mode ?? report?.mode ?? "local"
+  const assessment = assessEvidenceDrift(report, root, { ...options, mode })
+  if (!assessment.ok) {
+    return {
+      ok: false,
+      status: STATUS.UNAVAILABLE,
+      kind: "unavailable",
+      pass: false,
+      verdict: STATUS.UNAVAILABLE,
+      mode,
+      reason: assessment.reason,
+      drift: true,
+      divergence: assessment.divergence ?? null,
+    }
+  }
+  const reportVerdict = report?.verdict
+  const isPassing = Boolean(
+    report &&
+      reportVerdict === STATUS.PASS &&
+      !report.rows?.some((r) => r.status === STATUS.FAIL || (r.status === STATUS.UNAVAILABLE && r.mode === "blocking")),
+  )
+  return {
+    ok: true,
+    status: isPassing ? STATUS.PASS : reportVerdict ?? STATUS.PASS,
+    kind: "clean",
+    pass: isPassing,
+    verdict: reportVerdict ?? STATUS.PASS,
+    mode,
+    drift: false,
   }
 }
 
@@ -755,7 +882,7 @@ export function updateBaselines(report, root) {
   return changed
 }
 
-function runCli() {
+async function runCli() {
   const args = process.argv.slice(2)
   const valueOf = (flag, fallback) => {
     const index = args.indexOf(flag)
@@ -807,7 +934,7 @@ function runCli() {
 
   let report
   try {
-    report = runGate({
+    report = await runGate({
       root,
       mode: valueOf("--mode", "local"),
       label: valueOf("--label", "session"),
@@ -828,6 +955,12 @@ function runCli() {
     console.log(JSON.stringify({ ...report, report: written, baselinesChanged }, null, 2))
   } else {
     console.log(`Quality gate — ${report.mode} — verdict: ${report.verdict}`)
+    if (report.coverageLabel) {
+      console.log(`Measured: ${report.coverageLabel.measured}/${report.coverageLabel.total} metrics`)
+      if (report.coverageLabel.unmeasuredMajority) {
+        console.log(`WARNING: most metrics unmeasured (${report.coverageLabel.measured}/${report.coverageLabel.total}); pass is not evidence of quality`)
+      }
+    }
     if (report.rows.length) console.log(`\n${renderTable(report.rows)}`)
     if (report.notes.length) console.log(`\nNotes:\n${report.notes.map((note) => `  - ${note}`).join("\n")}`)
     if (written) console.log(`\nReport: ${path.relative(root, written.markdown)}`)
@@ -836,4 +969,4 @@ function runCli() {
   process.exitCode = report.exitCode
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) runCli()
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await runCli()

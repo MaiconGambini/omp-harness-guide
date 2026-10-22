@@ -18,9 +18,14 @@ import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 // Reuse, don't redefine: harness-common carries "single shared source of truth" comments about
 // the last time these helpers were duplicated and drifted.
-import { pathExists, readTextIfExists, redactSensitiveText } from "./harness-common.mjs"
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const commonModule = fs.existsSync(path.join(__dirname, "harness-common.mjs"))
+  ? await import("./harness-common.mjs")
+  : await import("../../../scripts/harness-common.mjs")
+const { pathExists, readTextIfExists, redactSensitiveText } = commonModule
 
 export { pathExists, readTextIfExists }
 
@@ -55,8 +60,13 @@ export const GATE_ARTIFACTS = [
   path.join("docs", "harness", "state"),
   path.join("docs", "harness", "judge"),
   path.join("docs", "harness", "session-handoff.md"),
+  path.join("docs", "harness", "progress.md"),
   path.join("docs", "harness", "traces"),
 ]
+export function isSpecEvidencePath(file) {
+  const normalized = String(file ?? "").replace(/\\/g, "/")
+  return /^agent-os\/specs\/[^/]+\/evidence(?:\/|$)/.test(normalized)
+}
 
 export const SOURCE_FILE_PATTERN = /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|go|kt|java|vue|svelte|rs|php|cs|swift)$/i
 
@@ -144,6 +154,17 @@ export function makeGit(root, { exec } = {}) {
     // check is forgeable; a HEAD-based one is not, and committing the removal is a visible
     // deletion of a high-risk path.
     existsAtHead: (relativePath) => ok(["cat-file", "-e", `HEAD:${relativePath.replace(/\\/g, "/")}`]),
+    isWorkingTreeClean: () => {
+      const changed = nulLines(["diff", "--name-only", "-z", "HEAD"])
+      if (changed.length > 0) return false
+      const untracked = nulLines(["ls-files", "--others", "--exclude-standard", "-z"])
+      const excluded = GATE_ARTIFACTS.map((artifact) => artifact.replace(/\\/g, "/"))
+      const nonArtifactUntracked = untracked
+        .map((f) => f.replace(/\\/g, "/"))
+        .filter((file) => !isSpecEvidencePath(file))
+        .filter((file) => !excluded.some((artifact) => file === artifact || file.startsWith(`${artifact}/`)))
+      return nonArtifactUntracked.length === 0
+    },
   }
 }
 
@@ -535,14 +556,158 @@ export function clearSourceHashCache() {
   sourceHashCache.clear()
 }
 
-function computeSourceHash(root, git, thresholdsOverride) {
-  if (!git.isRepo()) return null
+export function globToRegex(globPattern, flags = "") {
+  const pattern = String(globPattern ?? "").replace(/\\/g, "/")
+  let reStr = "^"
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]
+    if (c === "*") {
+      if (pattern[i + 1] === "*") {
+        i++
+        if (pattern[i + 1] === "/") {
+          i++
+          reStr += "(?:.*/)?"
+        } else {
+          reStr += ".*"
+        }
+      } else {
+        reStr += "[^/]*"
+      }
+    } else if (c === "?") {
+      reStr += "[^/]"
+    } else if (".+^${}()|[]\\".includes(c)) {
+      reStr += "\\" + c
+    } else {
+      reStr += c
+    }
+  }
+  reStr += "$"
+  return new RegExp(reStr, flags)
+}
+
+export const SAFE_RUNTIME_EXCLUDE_ALLOWLIST = new Set([
+  "agent/sessions/**",
+  "agent/terminal-sessions/**",
+  "agent/blobs/**",
+  "**/*.db",
+  "**/*.db-wal",
+  "**/*.db-shm",
+  "logs/**",
+  "cache/**",
+  "agent/predict/ngram/**",
+  ".maestri/roles/*/docs/harness/traces/**",
+  "scratch/*.md",
+  "webcache/**",
+])
+
+export const PROTECTED_PREFIXES = [
+  "agent/scripts/",
+  "agent/tests/",
+  "agent/skills/",
+  "agent/agents/",
+  "agent/docs/",
+  "agent/commands/",
+  "agent/extensions/",
+  "agent-os/",
+  "docs/harness/",
+]
+
+export const PROBE_PATHS = [
+  "agent/scripts/a.mjs",
+  "AGENT/SCRIPTS/a.mjs",
+  "agent/skills/a/SKILL.md",
+  "agent/skills/a/references/b.md",
+  "agent-os/x.json",
+  "docs/harness/x.md",
+  "src/a.ts",
+  "a.mjs",
+  "a.py",
+  "a.md",
+]
+
+export function isPatternTargetingProtectedPath(globPattern) {
+  const norm = String(globPattern ?? "").replace(/\\/g, "/").trim()
+  if (norm.includes("..")) return true
+  if (norm.startsWith("/")) return true
+  if (norm === "*" || norm === "**") return true
+
+  // Closed allowlist of exactly safe runtime glob patterns declared in quality-thresholds.json.
+  // Any pattern not explicitly in this allowlist is refused before hashing.
+  if (!SAFE_RUNTIME_EXCLUDE_ALLOWLIST.has(norm)) {
+    return true
+  }
+
+  const lowerNorm = norm.toLowerCase()
+  const thresholdsRelative = THRESHOLDS_PATH.replace(/\\/g, "/").toLowerCase()
+  if (lowerNorm === thresholdsRelative) return true
+
+  for (const prefix of PROTECTED_PREFIXES) {
+    const lowerPrefix = prefix.toLowerCase()
+    const prefixNoSlash = lowerPrefix.endsWith("/") ? lowerPrefix.slice(0, -1) : lowerPrefix
+    if (lowerNorm === prefixNoSlash || lowerNorm.startsWith(lowerPrefix) || lowerNorm.startsWith(`${prefixNoSlash}/`)) {
+      return true
+    }
+  }
+
+  const regex = globToRegex(norm, "i")
+  if (regex.test(thresholdsRelative)) return true
+  for (const probe of PROBE_PATHS) {
+    if (regex.test(probe)) return true
+  }
+
+  return false
+}
+
+export function checkWorkingTreeClean(git) {
+  if (!git || typeof git.isRepo !== "function" || !git.isRepo()) return false
+  if (typeof git.isWorkingTreeClean === "function") return Boolean(git.isWorkingTreeClean())
+  const changed = typeof git.changedInWorktree === "function" ? git.changedInWorktree() : []
+  if (Array.isArray(changed) && changed.length > 0) return false
+  const untracked = typeof git.untracked === "function" ? git.untracked() : []
+  const excluded = GATE_ARTIFACTS.map((artifact) => artifact.replace(/\\/g, "/"))
+  const nonArtifactUntracked = (Array.isArray(untracked) ? untracked : [])
+    .map((f) => f.replace(/\\/g, "/"))
+    .filter((file) => !isSpecEvidencePath(file))
+    .filter((file) => !excluded.some((artifact) => file === artifact || file.startsWith(`${artifact}/`)))
+  return nonArtifactUntracked.length === 0
+}
+
+export function computeSourceHash(root, git, thresholdsOverride) {
+  const g = git ?? makeGit(root)
+  if (!g || typeof g.isRepo !== "function" || !g.isRepo()) return null
+  const thresholds = thresholdsOverride ?? readJsonIfExists(path.join(root, THRESHOLDS_PATH))
+
+  const excludePatterns = Array.isArray(thresholds?.source_hash_exclude)
+    ? thresholds.source_hash_exclude
+    : []
+
+  const excludeRegexes = []
+  for (const pattern of excludePatterns) {
+    if (typeof pattern !== "string" || !pattern.trim()) continue
+    const trimmed = pattern.trim()
+    if (!SAFE_RUNTIME_EXCLUDE_ALLOWLIST.has(trimmed) || isPatternTargetingProtectedPath(trimmed)) {
+      throw new Error(`source_hash_exclude pattern "${trimmed}" is not in the safe runtime allowlist and is refused`)
+    }
+    excludeRegexes.push(globToRegex(trimmed, "i"))
+  }
+
   const excluded = GATE_ARTIFACTS.map((artifact) => artifact.replace(/\\/g, "/"))
   const thresholdsRelative = THRESHOLDS_PATH.replace(/\\/g, "/")
-  const files = [...git.tracked(), ...git.untracked()]
+  const isProtectedFile = (file) => {
+    const lower = file.toLowerCase()
+    if (lower === thresholdsRelative.toLowerCase()) return true
+    for (const prefix of PROTECTED_PREFIXES) {
+      if (lower.startsWith(prefix.toLowerCase())) return true
+    }
+    return false
+  }
+
+  const files = [...g.tracked(), ...g.untracked()]
     .map((file) => file.replace(/\\/g, "/"))
     .filter((file) => file !== thresholdsRelative)
+    .filter((file) => !isSpecEvidencePath(file))
     .filter((file) => !excluded.some((artifact) => file === artifact || file.startsWith(`${artifact}/`)))
+    .filter((file) => isProtectedFile(file) || !excludeRegexes.some((re) => re.test(file)))
     .sort()
 
   const hash = crypto.createHash("sha256")
@@ -559,7 +724,190 @@ function computeSourceHash(root, git, thresholdsOverride) {
     }
   }
 
-  const thresholds = thresholdsOverride ?? readJsonIfExists(path.join(root, THRESHOLDS_PATH))
   hash.update(thresholdsFingerprintInput(thresholds))
   return hash.digest("hex").slice(0, 16)
+}
+
+export function normalizeLineEndings(content) {
+  if (typeof content === "string") {
+    return content.replace(/\r\n/g, "\n")
+  }
+  if (Buffer.isBuffer(content)) {
+    if (content.includes(0)) return content
+    return Buffer.from(content.toString("utf8").replace(/\r\n/g, "\n"), "utf8")
+  }
+  return content
+}
+
+export function computeNormalizedSourceHash(root, git, thresholdsOverride) {
+  const g = git ?? makeGit(root)
+  if (!g || typeof g.isRepo !== "function" || !g.isRepo()) return null
+  const thresholds = thresholdsOverride ?? readJsonIfExists(path.join(root, THRESHOLDS_PATH))
+
+  const excludePatterns = Array.isArray(thresholds?.source_hash_exclude)
+    ? thresholds.source_hash_exclude
+    : []
+
+  const excludeRegexes = []
+  for (const pattern of excludePatterns) {
+    if (typeof pattern !== "string" || !pattern.trim()) continue
+    const trimmed = pattern.trim()
+    if (!SAFE_RUNTIME_EXCLUDE_ALLOWLIST.has(trimmed) || isPatternTargetingProtectedPath(trimmed)) {
+      throw new Error(`source_hash_exclude pattern "${trimmed}" is not in the safe runtime allowlist and is refused`)
+    }
+    excludeRegexes.push(globToRegex(trimmed, "i"))
+  }
+
+  const excluded = GATE_ARTIFACTS.map((artifact) => artifact.replace(/\\/g, "/"))
+  const thresholdsRelative = THRESHOLDS_PATH.replace(/\\/g, "/")
+  const isProtectedFile = (file) => {
+    const lower = file.toLowerCase()
+    if (lower === thresholdsRelative.toLowerCase()) return true
+    for (const prefix of PROTECTED_PREFIXES) {
+      if (lower.startsWith(prefix.toLowerCase())) return true
+    }
+    return false
+  }
+
+  const files = [...g.tracked(), ...g.untracked()]
+    .map((file) => file.replace(/\\/g, "/"))
+    .filter((file) => file !== thresholdsRelative)
+    .filter((file) => !isSpecEvidencePath(file))
+    .filter((file) => !excluded.some((artifact) => file === artifact || file.startsWith(`${artifact}/`)))
+    .filter((file) => isProtectedFile(file) || !excludeRegexes.some((re) => re.test(file)))
+    .sort()
+
+  const hash = crypto.createHash("sha256")
+  for (const file of files) {
+    const full = path.join(root, file)
+    if (!fs.existsSync(full)) continue
+    try {
+      const stat = fs.statSync(full)
+      if (!stat.isFile()) continue
+      hash.update(file)
+      const raw = fs.readFileSync(full)
+      hash.update(normalizeLineEndings(raw))
+    } catch {
+      hash.update(`${file}:unreadable`)
+    }
+  }
+
+  hash.update(normalizeLineEndings(thresholdsFingerprintInput(thresholds)))
+  return hash.digest("hex").slice(0, 16)
+}
+
+export function computeReportDigest(report) {
+  if (!report || typeof report !== "object") return null
+  const { evidenceEnvelope, ...rest } = report
+  return crypto.createHash("sha256").update(stableStringify(rest)).digest("hex").slice(0, 16)
+}
+
+export function createEvidenceEnvelope(root, { git, thresholds, report } = {}) {
+  const g = git ?? makeGit(root)
+  const isRepo = Boolean(g && typeof g.isRepo === "function" && g.isRepo())
+  const targetCommitSha = isRepo && typeof g.head === "function" ? (g.head() || null) : null
+  const sourceHashVal = isRepo ? computeSourceHash(root, g, thresholds) : null
+  const normalizedSourceHash = isRepo ? computeNormalizedSourceHash(root, g, thresholds) : null
+  const isClean = isRepo ? checkWorkingTreeClean(g) : false
+  const reportDigest = report ? computeReportDigest(report) : null
+  const timestamp = new Date().toISOString()
+
+  return {
+    target_commit_sha: targetCommitSha,
+    source_hash: sourceHashVal,
+    normalized_source_hash: normalizedSourceHash,
+    working_tree_clean: isClean,
+    report_digest: reportDigest,
+    timestamp,
+  }
+}
+
+export function assessEvidenceDrift(envelopeOrReport, root, { git, thresholds, mode = "local" } = {}) {
+  if (!envelopeOrReport || typeof envelopeOrReport !== "object") {
+    return {
+      ok: false,
+      status: "unavailable",
+      kind: "unavailable",
+      pass: false,
+      mode,
+      reason: "evidence envelope or report is missing",
+    }
+  }
+
+  const envelope = envelopeOrReport.evidenceEnvelope ?? envelopeOrReport
+  const expectedSha = envelope.target_commit_sha ?? envelope.targetCommitSha ?? null
+  const expectedSourceHash = envelope.source_hash ?? envelope.sourceHash ?? envelopeOrReport.sourceHash ?? null
+  const expectedNormalized = envelope.normalized_source_hash ?? envelope.normalizedSourceHash ?? null
+
+  if (!expectedSha && !expectedSourceHash) {
+    return {
+      ok: false,
+      status: "unavailable",
+      kind: "unavailable",
+      pass: false,
+      mode,
+      reason: "evidence envelope carries no target_commit_sha or source_hash",
+    }
+  }
+
+  const g = git ?? makeGit(root)
+  if (!g || typeof g.isRepo !== "function" || !g.isRepo()) {
+    return {
+      ok: false,
+      status: "unavailable",
+      kind: "unavailable",
+      pass: false,
+      mode,
+      reason: "current tree is not a git repository or git state is unavailable",
+    }
+  }
+
+  const currentSha = typeof g.head === "function" ? (g.head() || null) : null
+  const currentSourceHash = computeSourceHash(root, g, thresholds)
+  const currentNormalized = computeNormalizedSourceHash(root, g, thresholds)
+
+  if (expectedSha !== null && currentSha !== expectedSha) {
+    return {
+      ok: false,
+      status: "unavailable",
+      kind: "unavailable",
+      pass: false,
+      mode,
+      reason: `target commit SHA diverged: expected ${expectedSha}, current tree is at ${currentSha}`,
+      divergence: "target_commit_sha",
+      expected: expectedSha,
+      current: currentSha,
+    }
+  }
+
+  if (expectedSourceHash !== null) {
+    const exactMatch = currentSourceHash === expectedSourceHash
+    const normalizedMatch = Boolean(
+      expectedNormalized && currentNormalized && expectedNormalized === currentNormalized,
+    )
+    if (!exactMatch && !normalizedMatch) {
+      return {
+        ok: false,
+        status: "unavailable",
+        kind: "unavailable",
+        pass: false,
+        mode,
+        reason: `source hash diverged: expected ${expectedSourceHash}, current tree hash is ${currentSourceHash}`,
+        divergence: "source_hash",
+        expected: expectedSourceHash,
+        current: currentSourceHash,
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    status: "pass",
+    kind: "clean",
+    pass: true,
+    mode,
+    target_commit_sha: currentSha,
+    source_hash: currentSourceHash,
+    working_tree_clean: checkWorkingTreeClean(g),
+  }
 }

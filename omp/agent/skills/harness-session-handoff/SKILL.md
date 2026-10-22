@@ -1,6 +1,6 @@
 ---
 name: harness-session-handoff
-description: Create or update docs/harness/session-handoff.md. Use to record verified evidence, changes, blockers, decisions, next steps, and commands.
+description: "Record verified evidence and decisions in session-handoff.md. Use when ending or suspending a session. Do NOT use for session initialization (use harness-session-start)."
 ---
 
 # Harness Session Handoff
